@@ -103,10 +103,100 @@ class GroundStationConfig(_Model):
     min_elevation_deg: float = Field(default=10.0, ge=0.0, lt=90.0)
 
 
+class Antenna(_Model):
+    """Either a fixed peak gain, or a circular dish whose gain is computed."""
+
+    gain_dbi: float | None = None
+    dish_diameter_m: float | None = Field(default=None, gt=0)
+    dish_efficiency: float = Field(default=0.55, gt=0, le=1)
+
+    @model_validator(mode="after")
+    def _check_kind(self):
+        if (self.gain_dbi is None) == (self.dish_diameter_m is None):
+            raise ValueError("antenna needs exactly one of gain_dbi or dish_diameter_m")
+        return self
+
+
+class Transmitter(_Model):
+    power_w: float = Field(gt=0)
+    line_loss_db: float = Field(default=0.0, ge=0)
+    antenna: Antenna
+
+
+class Receiver(_Model):
+    """Receiver noise, referred to the antenna terminals.
+
+    Give either `system_noise_temp_k` directly (already including line
+    losses), or `antenna_noise_temp_k` + `noise_figure_db` + `line_loss_db`
+    to have it computed. Typical antenna temperatures: ~290 K for a
+    spacecraft antenna viewing Earth; 50-150 K for a ground dish at
+    S/X-band; several hundred K at UHF due to galactic and man-made noise.
+    """
+
+    antenna: Antenna
+    system_noise_temp_k: float | None = Field(default=None, gt=0)
+    antenna_noise_temp_k: float | None = Field(default=None, ge=0)
+    noise_figure_db: float | None = Field(default=None, ge=0)
+    line_loss_db: float = Field(default=0.0, ge=0)
+
+    @model_validator(mode="after")
+    def _check_noise(self):
+        direct = self.system_noise_temp_k is not None
+        computed = self.antenna_noise_temp_k is not None and self.noise_figure_db is not None
+        if direct == computed:
+            raise ValueError(
+                "receiver needs either system_noise_temp_k, or both "
+                "antenna_noise_temp_k and noise_figure_db"
+            )
+        if direct and self.line_loss_db:
+            raise ValueError("line_loss_db is already included in system_noise_temp_k")
+        return self
+
+
+class Coding(_Model):
+    """Forward error correction, modeled as a gain over uncoded operation.
+
+    Typical gains at BER 1e-5: convolutional r=1/2 K=7 (soft) ~5 dB;
+    RS(255,223) + conv r=1/2 ~7 dB; CCSDS LDPC r=1/2 ~8-9 dB.
+    """
+
+    gain_db: float = Field(default=0.0, ge=0)
+    rate: float = Field(default=1.0, gt=0, le=1)
+
+
+class Losses(_Model):
+    polarization_db: float = Field(default=0.0, ge=0)
+    pointing_db: float = Field(default=0.0, ge=0)
+    implementation_db: float = Field(default=1.0, ge=0)
+    # Gaseous/cloud loss at zenith, scaled by slant path. A placeholder
+    # until the ITU-R models land.
+    atmospheric_zenith_db: float = Field(default=0.0, ge=0)
+
+
+class LinkConfig(_Model):
+    name: str
+    direction: Literal["downlink", "uplink"]
+    frequency_mhz: float = Field(gt=0)
+    data_rate_bps: float = Field(gt=0)
+    modulation: Literal["bpsk", "qpsk", "8psk", "bfsk_coherent", "bfsk_noncoherent", "gmsk"]
+    coding: Coding = Coding()
+    target_ber: float = Field(default=1e-5, ge=1e-12, lt=0.5)
+    transmitter: Transmitter
+    receiver: Receiver
+    losses: Losses = Losses()
+    stations: list[str] | None = None  # default: every ground station
+
+    @property
+    def frequency_hz(self) -> float:
+        return self.frequency_mhz * 1e6
+
+
 class SimulationConfig(_Model):
     start: datetime
     duration_hours: float = Field(gt=0, le=24 * 30)
     step_seconds: float = Field(default=30.0, gt=0, le=600)
+    # Sampling step for link time series within each pass.
+    link_step_seconds: float = Field(default=5.0, gt=0, le=60)
 
     @field_validator("start")
     @classmethod
@@ -126,6 +216,7 @@ class Scenario(_Model):
     orbit: Orbit
     propagator: Literal["two_body", "j2", "sgp4"]
     ground_stations: list[GroundStationConfig] = Field(min_length=1)
+    links: list[LinkConfig] = []
 
     @model_validator(mode="after")
     def _check_propagator(self):
@@ -135,4 +226,16 @@ class Scenario(_Model):
         names = [gs.name for gs in self.ground_stations]
         if len(set(names)) != len(names):
             raise ValueError("ground station names must be unique")
+        link_names = [link.name for link in self.links]
+        if len(set(link_names)) != len(link_names):
+            raise ValueError("link names must be unique")
+        for link in self.links:
+            unknown = set(link.stations or []) - set(names)
+            if unknown:
+                raise ValueError(f"link '{link.name}' references unknown stations: {sorted(unknown)}")
         return self
+
+    def link_stations(self, link: LinkConfig) -> list[GroundStationConfig]:
+        if link.stations is None:
+            return list(self.ground_stations)
+        return [gs for gs in self.ground_stations if gs.name in link.stations]

@@ -1,4 +1,4 @@
-"""Command-line entry point: `simcore run <scenario.yaml>`."""
+"""Command-line entry point: `simcore run|budget <scenario.yaml>`."""
 
 from __future__ import annotations
 
@@ -10,7 +10,9 @@ from pathlib import Path
 from pydantic import ValidationError
 
 from simcore import __version__, simulation
-from simcore.scenario import load_scenario
+from simcore.link.analysis import budget_table
+from simcore.link.budget import LinkModel
+from simcore.scenario import Scenario, load_scenario
 
 
 def _format_passes(result: simulation.SimulationResult) -> str:
@@ -45,18 +47,87 @@ def _format_passes(result: simulation.SimulationResult) -> str:
     return "\n".join(lines)
 
 
-def _cmd_run(args) -> int:
+def _format_bytes(bits: float) -> str:
+    size = bits / 8.0
+    for unit in ("B", "kB", "MB", "GB"):
+        if size < 1000.0 or unit == "GB":
+            return f"{size:.1f} {unit}"
+        size /= 1000.0
+
+
+def _format_links(result: simulation.SimulationResult) -> str:
+    lines = []
+    for link in result.scenario.links:
+        model = LinkModel(link)
+        lines.append("")
+        lines.append(
+            f"Link: {link.name} ({link.direction}, {link.frequency_mhz:g} MHz, "
+            f"{link.modulation.upper()} {link.data_rate_bps:g} bps) - "
+            f"EIRP {model.eirp_dbw:.1f} dBW, G/T {model.g_over_t_dbk:.1f} dB/K, "
+            f"required Eb/N0 {model.required_ebn0_db:.1f} dB"
+        )
+        for gs in result.scenario.link_stations(link):
+            lps = [lp for lp in result.link_passes if lp.link == link.name and lp.station == gs.name]
+            volume = sum(lp.data_volume_bits for lp in lps)
+            lines.append(f"  {gs.name}: {len(lps)} passes, {_format_bytes(volume)} total")
+            if not lps:
+                continue
+            lines.append(f"    {'#':>3}  {'AOS (UTC)':<19}  {'MaxEl':>6}  {'MaxDop':>9}  {'MaxRate':>9}"
+                         f"  {'PeakMarg':>8}  {'Closed':>7}  {'Volume':>9}")
+            for lp in lps:
+                p = result.passes[gs.name][lp.pass_index]
+                lines.append(
+                    f"    {lp.pass_index + 1:>3}  {p.aos:%Y-%m-%d %H:%M:%S}  {p.max_elevation_deg:6.1f}"
+                    f"  {lp.max_abs_doppler_hz / 1e3:7.2f}kHz  {lp.max_abs_doppler_rate_hz_s:6.1f}Hz/s"
+                    f"  {lp.peak_margin_db:6.1f}dB  {lp.link_closed_s / 60:6.1f}m"
+                    f"  {_format_bytes(lp.data_volume_bits):>9}"
+                )
+    return "\n".join(lines)
+
+
+def _load(path: Path) -> Scenario | None:
     try:
-        scenario = load_scenario(args.scenario)
+        return load_scenario(path)
     except ValidationError as e:
-        print(f"Invalid scenario {args.scenario}:\n{e}", file=sys.stderr)
+        print(f"Invalid scenario {path}:\n{e}", file=sys.stderr)
+        return None
+
+
+def _cmd_run(args) -> int:
+    scenario = _load(args.scenario)
+    if scenario is None:
         return 2
     result = simulation.run(scenario)
     print(_format_passes(result))
+    if scenario.links:
+        print(_format_links(result))
     if args.json:
         args.json.parent.mkdir(parents=True, exist_ok=True)
-        args.json.write_text(json.dumps(result.to_dict(args.ephemeris), indent=2))
+        args.json.write_text(json.dumps(result.to_dict(args.ephemeris), indent=2), encoding="utf-8")
         print(f"\nWrote {args.json}")
+    return 0
+
+
+def _cmd_budget(args) -> int:
+    scenario = _load(args.scenario)
+    if scenario is None:
+        return 2
+    if not scenario.links:
+        print("Scenario defines no links.", file=sys.stderr)
+        return 1
+    # Size the budget for the highest altitude in the window (worst case).
+    ephemeris = simulation.compute_ephemeris(scenario, simulation.build_propagator(scenario))
+    altitude = float(ephemeris.altitude_km.max())
+
+    for link in scenario.links:
+        model = LinkModel(link)
+        for gs in scenario.link_stations(link):
+            elevations = [gs.min_elevation_deg, 90.0]
+            tables = [budget_table(model, altitude, gs.altitude_m / 1000.0, el) for el in elevations]
+            print(f"\n{link.name} ({link.direction}) - {gs.name}, altitude {altitude:.1f} km")
+            print(f"  {'':<38}{'At mask':>10}{'Zenith':>10}")
+            for (label, low, unit), (_, high, _) in zip(*tables):
+                print(f"  {label:<38}{low:10.2f}{high:10.2f}  {unit}")
     return 0
 
 
@@ -71,6 +142,10 @@ def main(argv: list[str] | None = None) -> int:
     run.add_argument("--ephemeris", action="store_true",
                      help="include the sampled ephemeris in the JSON output")
     run.set_defaults(func=_cmd_run)
+
+    budget = sub.add_parser("budget", help="print link budget tables at the mask elevation and zenith")
+    budget.add_argument("scenario", type=Path, help="scenario YAML file")
+    budget.set_defaults(func=_cmd_budget)
 
     args = parser.parse_args(argv)
     return args.func(args)

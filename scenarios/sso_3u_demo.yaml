@@ -6,7 +6,8 @@ description: 500 km sun-synchronous 3U CubeSat, J2 propagation
 simulation:
   start: 2026-11-11T00:00:00Z
   duration_hours: 24
-  step_seconds: 30
+  step_seconds: 30          # pass search sampling
+  link_step_seconds: 5      # link time-series sampling within passes
 
 spacecraft:
   name: DEMOSAT-1
@@ -40,3 +41,70 @@ ground_stations:
     longitude_deg: 103.82
     altitude_m: 15
     min_elevation_deg: 10
+
+# Three representative links. Values are typical, not from a specific mission.
+links:
+  # Amateur-band telemetry beacon: low power, omni antenna, Yagi on the ground.
+  - name: UHF telemetry
+    direction: downlink
+    frequency_mhz: 437.5
+    data_rate_bps: 9600
+    modulation: gmsk
+    transmitter:
+      power_w: 1.0
+      line_loss_db: 0.5
+      antenna: {gain_dbi: 0.0}          # deployable turnstile, roughly omni
+    receiver:
+      antenna: {gain_dbi: 14.0}         # crossed Yagi
+      antenna_noise_temp_k: 500         # sky + man-made noise at UHF
+      noise_figure_db: 1.0              # mast-mounted LNA
+      line_loss_db: 0.5
+    losses:
+      polarization_db: 3.0              # linear on spacecraft, circular on ground
+      pointing_db: 1.0
+      implementation_db: 1.5
+      atmospheric_zenith_db: 0.1
+
+  # High-rate payload downlink: patch antenna to a 3.7 m dish.
+  - name: S-band payload
+    direction: downlink
+    frequency_mhz: 2245
+    data_rate_bps: 5000000
+    modulation: qpsk
+    coding: {gain_db: 5.0, rate: 0.5}   # convolutional r=1/2 K=7, soft decision
+    transmitter:
+      power_w: 2.0
+      line_loss_db: 1.0
+      antenna: {gain_dbi: 6.0}          # nadir patch
+    receiver:
+      antenna: {dish_diameter_m: 3.7, dish_efficiency: 0.55}
+      antenna_noise_temp_k: 80
+      noise_figure_db: 0.8
+      line_loss_db: 0.3
+    losses:
+      polarization_db: 0.5
+      pointing_db: 3.0                  # patch beam edge at low elevation
+      implementation_db: 2.0
+      atmospheric_zenith_db: 0.05
+    stations: [Svalbard, Boulder]
+
+  # Command uplink: high-power ground transmitter to an omni spacecraft antenna.
+  - name: VHF command
+    direction: uplink
+    frequency_mhz: 145.9
+    data_rate_bps: 1200
+    modulation: bfsk_noncoherent
+    transmitter:
+      power_w: 50.0
+      line_loss_db: 2.0
+      antenna: {gain_dbi: 12.0}         # Yagi
+    receiver:
+      antenna: {gain_dbi: 0.0}          # monopole
+      antenna_noise_temp_k: 1000        # warm Earth plus VHF man-made noise
+      noise_figure_db: 2.0
+      line_loss_db: 0.5
+    losses:
+      polarization_db: 3.0
+      pointing_db: 1.0
+      implementation_db: 3.0
+      atmospheric_zenith_db: 0.1

@@ -75,3 +75,27 @@ def test_duplicate_station_names_rejected():
     gs = BASE["ground_stations"][0]
     with pytest.raises(ValidationError, match="unique"):
         Scenario.model_validate(with_changes(ground_stations=[gs, gs]))
+
+
+def _link(**overrides):
+    link = {
+        "name": "L",
+        "direction": "downlink",
+        "frequency_mhz": 437.5,
+        "data_rate_bps": 9600,
+        "modulation": "gmsk",
+        "transmitter": {"power_w": 1.0, "antenna": {"gain_dbi": 0.0}},
+        "receiver": {"antenna": {"gain_dbi": 14.0}, "system_noise_temp_k": 500},
+    }
+    link.update(overrides)
+    return link
+
+
+def test_link_unknown_station_rejected():
+    with pytest.raises(ValidationError, match="unknown stations"):
+        Scenario.model_validate(with_changes(links=[_link(stations=["Nowhere"])]))
+
+
+def test_duplicate_link_names_rejected():
+    with pytest.raises(ValidationError, match="link names"):
+        Scenario.model_validate(with_changes(links=[_link(), _link()]))

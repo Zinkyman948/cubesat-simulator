@@ -94,6 +94,8 @@ export interface SimulationResult {
 
 export interface ValidationIssue {
   loc: string;
+  /** Location as a document path, e.g. ["ground_stations", 0, "latitude_deg"]. */
+  path: (string | number)[];
   msg: string;
 }
 

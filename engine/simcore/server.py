@@ -8,6 +8,7 @@ per-launch token from the SIMCORE_TOKEN environment variable.
 from __future__ import annotations
 
 import hmac
+import json
 import os
 import sys
 from pathlib import Path
@@ -44,6 +45,19 @@ def default_examples_dir() -> Path:
 
 class SimulateRequest(BaseModel):
     yaml: str
+
+
+# Tags pydantic inserts into error locations for discriminated unions
+# (orbit -> keplerian/tle); they are not keys in the scenario document.
+_UNION_TAGS = {"keplerian", "tle"}
+
+
+def _issue(err: dict) -> dict:
+    """A validation error with its location as a document path, e.g.
+    ["ground_stations", 0, "latitude_deg"], for matching to form fields."""
+    path = [p for p in err["loc"] if p not in _UNION_TAGS]
+    msg = err["msg"].removeprefix("Value error, ")
+    return {"loc": ".".join(str(p) for p in path) or "scenario", "path": path, "msg": msg}
 
 
 def _validation_error(errors: list[dict]) -> JSONResponse:
@@ -91,22 +105,37 @@ def create_app(token: str | None = None, examples_dir: Path | None = None) -> Fa
             raise HTTPException(status_code=404, detail="unknown example")
         return {"id": example_id, "yaml": path.read_text(encoding="utf-8")}
 
+    def parse_scenario(text: str) -> Scenario | JSONResponse:
+        try:
+            data = yaml.safe_load(text)
+        except yaml.YAMLError as e:
+            return _validation_error([{"loc": "yaml", "path": [], "msg": str(e)}])
+        if not isinstance(data, dict):
+            return _validation_error(
+                [{"loc": "yaml", "path": [], "msg": "scenario must be a YAML mapping"}]
+            )
+        try:
+            return Scenario.model_validate(data)
+        except ValidationError as e:
+            return _validation_error([_issue(err) for err in e.errors()])
+
+    @app.post("/api/validate")
+    def validate(req: SimulateRequest):
+        """Check a scenario without running it (live form feedback).
+
+        Always 200: problems in the scenario are the answer, not a failure.
+        """
+        parsed = parse_scenario(req.yaml)
+        if isinstance(parsed, JSONResponse):
+            return JSONResponse(content=json.loads(parsed.body))
+        return {"errors": []}
+
     @app.post("/api/simulate")
     def simulate(req: SimulateRequest):
-        try:
-            data = yaml.safe_load(req.yaml)
-        except yaml.YAMLError as e:
-            return _validation_error([{"loc": "yaml", "msg": str(e)}])
-        if not isinstance(data, dict):
-            return _validation_error([{"loc": "yaml", "msg": "scenario must be a YAML mapping"}])
-        try:
-            scenario = Scenario.model_validate(data)
-        except ValidationError as e:
-            return _validation_error([
-                {"loc": ".".join(str(p) for p in err["loc"]) or "scenario", "msg": err["msg"]}
-                for err in e.errors()
-            ])
-        result = simulation.run(scenario)
+        parsed = parse_scenario(req.yaml)
+        if isinstance(parsed, JSONResponse):
+            return parsed
+        result = simulation.run(parsed)
         out = result.to_dict(include_ephemeris=True)
         # The app only needs the ground track; drop the inertial state vectors.
         for key in ("r_gcrs_km", "v_gcrs_km_s"):

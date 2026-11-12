@@ -1,3 +1,5 @@
+import { useState } from "react";
+import { load, save } from "../storage";
 import type { SimulationResult } from "../types";
 
 function fmtBytes(bits: number): string {
@@ -11,8 +13,22 @@ function fmtBytes(bits: number): string {
 
 export default function Summary({ result }: { result: SimulationResult }) {
   const hours = result.scenario.simulation.duration_hours;
+  const all = Object.values(result.passes).flat();
+  const contactMin = all.reduce((s, p) => s + p.duration_s, 0) / 60;
+  const [open, setOpen] = useState(() => load("summary-open") === "1");
   return (
-    <>
+    <details
+      className="summary-panel"
+      open={open}
+      onToggle={(e) => {
+        const now = (e.currentTarget as HTMLDetailsElement).open;
+        setOpen(now);
+        save("summary-open", now ? "1" : "0");
+      }}
+    >
+      <summary>
+        Results · {all.length} passes · {contactMin.toFixed(0)} min contact
+      </summary>
       <div className="section">
         <h2>Contact over {hours} h</h2>
         <table className="summary">
@@ -66,6 +82,6 @@ export default function Summary({ result }: { result: SimulationResult }) {
           </table>
         </div>
       )}
-    </>
+    </details>
   );
 }

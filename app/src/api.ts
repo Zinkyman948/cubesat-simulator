@@ -86,5 +86,14 @@ export const listExamples = () => request<ExampleSummary[]>("/api/examples");
 export const getExample = (id: string) =>
   request<{ id: string; yaml: string }>(`/api/examples/${encodeURIComponent(id)}`);
 
+/** Validation problems for a scenario, without running it (empty when valid). */
+export async function validate(yaml: string): Promise<ValidationIssue[]> {
+  const body = await request<{ errors: ValidationIssue[] }>("/api/validate", {
+    method: "POST",
+    body: JSON.stringify({ yaml }),
+  });
+  return body.errors;
+}
+
 export const simulate = (yaml: string) =>
   request<SimulationResult>("/api/simulate", { method: "POST", body: JSON.stringify({ yaml }) });

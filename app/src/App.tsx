@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useState } from "react";
-import { ScenarioError, getExample, listExamples, simulate, waitForEngine } from "./api";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { ScenarioError, getExample, listExamples, simulate, validate, waitForEngine } from "./api";
 import Globe from "./components/Globe";
 import PassCharts from "./components/PassCharts";
 import PassTable from "./components/PassTable";
 import ScenarioEditor from "./components/ScenarioEditor";
 import Summary from "./components/Summary";
+import { load, save } from "./storage";
 import type { ExampleSummary, PassRef, SimulationResult, ValidationIssue } from "./types";
 
 type EngineState = { status: "starting" } | { status: "ok"; version: string } | { status: "error"; message: string };
@@ -29,6 +30,9 @@ export default function App() {
   const [running, setRunning] = useState(false);
   const [issues, setIssues] = useState<ValidationIssue[]>([]);
   const [error, setError] = useState<string | null>(null);
+  // The example's original text, to detect edits and to revert.
+  const [original, setOriginal] = useState("");
+  const exampleIdRef = useRef("");
 
   const run = useCallback(async (text: string) => {
     setRunning(true);
@@ -46,15 +50,50 @@ export default function App() {
     }
   }, []);
 
+  // Each example keeps its own edited draft, so switching examples never loses work.
   const loadExample = useCallback(
     async (id: string) => {
-      setExampleId(id);
       const ex = await getExample(id);
-      setYaml(ex.yaml);
-      await run(ex.yaml);
+      exampleIdRef.current = id;
+      setExampleId(id);
+      save("example", id);
+      setOriginal(ex.yaml);
+      const text = load(`draft:${id}`) ?? ex.yaml;
+      setYaml(text);
+      await run(text);
     },
     [run],
   );
+
+  const changeYaml = useCallback(
+    (text: string) => {
+      setYaml(text);
+      save(`draft:${exampleIdRef.current}`, text === original ? null : text);
+    },
+    [original],
+  );
+
+  const revert = useCallback(() => {
+    setYaml(original);
+    save(`draft:${exampleIdRef.current}`, null);
+    run(original);
+  }, [original, run]);
+
+  // Live validation while editing, debounced; stale responses are ignored.
+  const validationSeq = useRef(0);
+  useEffect(() => {
+    if (engine.status !== "ok" || !yaml) return;
+    const seq = ++validationSeq.current;
+    const timer = setTimeout(async () => {
+      try {
+        const found = await validate(yaml);
+        if (seq === validationSeq.current) setIssues(found);
+      } catch {
+        // Engine errors surface when running; live checks stay quiet.
+      }
+    }, 350);
+    return () => clearTimeout(timer);
+  }, [yaml, engine.status]);
 
   // Connect to the engine, then load and run the first example.
   useEffect(() => {
@@ -67,7 +106,9 @@ export default function App() {
         const list = await listExamples();
         if (cancelled) return;
         setExamples(list);
-        const initial = list.find((e) => e.id === "sso_3u_demo") ?? list[0];
+        const remembered = load("example");
+        const initial =
+          list.find((e) => e.id === remembered) ?? list.find((e) => e.id === "sso_3u_demo") ?? list[0];
         if (initial) await loadExample(initial.id);
       } catch (e) {
         if (!cancelled) setEngine({ status: "error", message: e instanceof Error ? e.message : String(e) });
@@ -102,7 +143,9 @@ export default function App() {
           exampleId={exampleId}
           onExampleChange={loadExample}
           yaml={yaml}
-          onYamlChange={setYaml}
+          onYamlChange={changeYaml}
+          edited={yaml !== original}
+          onRevert={revert}
           onRun={() => run(yaml)}
           running={running}
           disabled={engine.status !== "ok"}

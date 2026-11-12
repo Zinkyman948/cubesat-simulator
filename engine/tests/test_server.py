@@ -44,7 +44,25 @@ def test_simulate_reports_validation_errors(client):
     text = _example(client, "sso_3u_demo").replace("inclination_deg: 97.4", "inclination_deg: 200")
     r = client.post("/api/simulate", json={"yaml": text})
     assert r.status_code == 422
-    assert any("inclination_deg" in e["loc"] for e in r.json()["errors"])
+    # Union tags (keplerian/tle) are stripped so paths match the document.
+    assert {"loc": "orbit.inclination_deg", "path": ["orbit", "inclination_deg"]}.items() <= r.json()["errors"][0].items()
+
+
+def test_validate_endpoint(client):
+    text = _example(client, "sso_3u_demo")
+    assert client.post("/api/validate", json={"yaml": text}).json() == {"errors": []}
+
+    bad = text.replace("latitude_deg: 40.015", "latitude_deg: 95")
+    r = client.post("/api/validate", json={"yaml": bad})
+    assert r.status_code == 200
+    assert r.json()["errors"][0]["path"] == ["ground_stations", 1, "latitude_deg"]
+
+
+def test_model_level_errors_have_clean_messages(client):
+    text = _example(client, "sso_3u_demo").replace("altitude_km: 500", "altitude_km: 500\n  semi_major_axis_km: 6878")
+    errors = client.post("/api/validate", json={"yaml": text}).json()["errors"]
+    assert errors[0]["path"] == ["orbit"]
+    assert errors[0]["msg"].startswith("give exactly one")
 
 
 @pytest.mark.parametrize("text", ["name: [unclosed", "just a string"])

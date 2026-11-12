@@ -1,0 +1,42 @@
+# A typical 3U CubeSat in a 500 km sun-synchronous orbit, tracked by
+# three ground stations at high, mid and low latitude.
+name: SSO 3U demo
+description: 500 km sun-synchronous 3U CubeSat, J2 propagation
+
+simulation:
+  start: 2026-11-11T00:00:00Z
+  duration_hours: 24
+  step_seconds: 30
+
+spacecraft:
+  name: DEMOSAT-1
+  form_factor: 3U
+  mass_kg: 4.0
+
+propagator: j2
+
+orbit:
+  type: keplerian
+  altitude_km: 500
+  eccentricity: 0.001
+  inclination_deg: 97.4     # sun-synchronous at 500 km
+  raan_deg: 45
+  arg_perigee_deg: 0
+  true_anomaly_deg: 0
+
+ground_stations:
+  - name: Svalbard
+    latitude_deg: 78.23
+    longitude_deg: 15.41
+    altitude_m: 450
+    min_elevation_deg: 5
+  - name: Boulder
+    latitude_deg: 40.015
+    longitude_deg: -105.27
+    altitude_m: 1655
+    min_elevation_deg: 10
+  - name: Singapore
+    latitude_deg: 1.35
+    longitude_deg: 103.82
+    altitude_m: 15
+    min_elevation_deg: 10

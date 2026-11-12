@@ -13,12 +13,19 @@ via GitHub Releases.
 |---|---|---|
 | 1. Engine skeleton | Scenario files, two-body / J2 / SGP4 propagation, frames, pass prediction, CLI | Done |
 | 2. Link budget v1 | Path loss, Doppler, noise, Eb/N0, BER, margin, data volume | Done |
-| 3. Desktop shell | Tauri app, Cesium globe, charts, Python sidecar | Planned |
+| 3. Desktop shell | Tauri app, Cesium globe, charts, Python sidecar | Done |
 | 4. Packaging | Windows installer, updater, release CI | Planned |
 | 5. Fidelity | Full force model, ITU-R losses, attitude, antennas, eclipses | Planned |
 | 6. Validation & polish | GMAT comparisons, docs, web demo, macOS/Linux | Planned |
 
-## Quick start
+## Get the desktop app
+
+Download the Windows installer from the latest successful
+[CI run](https://github.com/Zinkyman948/cubesat-simulator/actions) (artifact
+**CubeSat-Simulator-Windows-installer**). To build or develop the app, see
+[`app/README.md`](app/README.md).
+
+## Engine quick start (command line)
 
 Requires **Python 3.11 – 3.13**. Brand-new Python releases (e.g. 3.15) can lack
 prebuilt packages for numpy/scipy/PyYAML, which makes pip try to compile them.
@@ -49,6 +56,8 @@ See [`engine/README.md`](engine/README.md) for conventions and details.
 ## Layout
 
 ```
-engine/      Python simulation engine (simcore) and tests
+engine/      Python simulation engine (simcore), its HTTP API, and tests
+app/         Desktop app: Tauri shell (src-tauri/) and React frontend (src/)
 scenarios/   Example scenario files (YAML)
+scripts/     Engine sidecar build and smoke test
 ```

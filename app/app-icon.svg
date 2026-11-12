@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <!-- App icon: a 1U CubeSat with deployed solar panels on an orbit ring. -->
+  <rect x="32" y="32" width="960" height="960" rx="200" fill="#10233f"/>
+  <ellipse cx="512" cy="512" rx="400" ry="170" fill="none" stroke="#3987e5" stroke-width="28" transform="rotate(-24 512 512)"/>
+  <g transform="rotate(-24 512 512)">
+    <rect x="200" y="452" width="200" height="120" rx="10" fill="#2a78d6" stroke="#cde2fb" stroke-width="12"/>
+    <line x1="266" y1="452" x2="266" y2="572" stroke="#cde2fb" stroke-width="8"/>
+    <line x1="333" y1="452" x2="333" y2="572" stroke="#cde2fb" stroke-width="8"/>
+    <rect x="624" y="452" width="200" height="120" rx="10" fill="#2a78d6" stroke="#cde2fb" stroke-width="12"/>
+    <line x1="691" y1="452" x2="691" y2="572" stroke="#cde2fb" stroke-width="8"/>
+    <line x1="758" y1="452" x2="758" y2="572" stroke="#cde2fb" stroke-width="8"/>
+    <line x1="400" y1="512" x2="432" y2="512" stroke="#cde2fb" stroke-width="12"/>
+    <line x1="592" y1="512" x2="624" y2="512" stroke="#cde2fb" stroke-width="12"/>
+    <rect x="432" y="432" width="160" height="160" rx="14" fill="#f0efec"/>
+    <rect x="456" y="456" width="112" height="112" rx="8" fill="#c3c2b7"/>
+    <circle cx="512" cy="512" r="22" fill="#eda100"/>
+  </g>
+</svg>

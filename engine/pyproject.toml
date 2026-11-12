@@ -14,10 +14,12 @@ dependencies = [
     "skyfield>=1.48",
     "pydantic>=2.6",
     "pyyaml>=6.0",
+    "fastapi>=0.110",
+    "uvicorn>=0.29",
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8.0"]
+dev = ["pytest>=8.0", "httpx2>=2.16"]
 
 [project.scripts]
 simcore = "simcore.cli:main"

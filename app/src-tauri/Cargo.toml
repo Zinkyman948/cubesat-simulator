@@ -1,0 +1,19 @@
+[package]
+name = "cubesat-simulator"
+version = "0.1.0"
+description = "High-fidelity CubeSat orbit and communications simulator"
+edition = "2021"
+
+[lib]
+# The _lib suffix avoids a name clash with the binary on Windows.
+name = "cubesat_simulator_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-shell = "2"
+serde = { version = "1", features = ["derive"] }
+uuid = { version = "1", features = ["v4"] }

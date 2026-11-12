@@ -1,4 +1,4 @@
-"""Command-line entry point: `simcore run|budget <scenario.yaml>`."""
+"""Command-line entry point: `simcore run|budget <scenario.yaml>`, `simcore serve`."""
 
 from __future__ import annotations
 
@@ -131,6 +131,13 @@ def _cmd_budget(args) -> int:
     return 0
 
 
+def _cmd_serve(args) -> int:
+    from simcore.server import serve
+
+    serve(args.host, args.port, exit_on_stdin_close=args.exit_on_stdin_close)
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="simcore", description="CubeSat simulation engine")
     parser.add_argument("--version", action="version", version=f"simcore {__version__}")
@@ -146,6 +153,13 @@ def main(argv: list[str] | None = None) -> int:
     budget = sub.add_parser("budget", help="print link budget tables at the mask elevation and zenith")
     budget.add_argument("scenario", type=Path, help="scenario YAML file")
     budget.set_defaults(func=_cmd_budget)
+
+    srv = sub.add_parser("serve", help="run the local HTTP API used by the desktop app")
+    srv.add_argument("--host", default="127.0.0.1")
+    srv.add_argument("--port", type=int, default=8765, help="0 picks a free port")
+    srv.add_argument("--exit-on-stdin-close", action="store_true",
+                     help="exit when stdin closes (used when launched by the desktop app)")
+    srv.set_defaults(func=_cmd_serve)
 
     args = parser.parse_args(argv)
     return args.func(args)

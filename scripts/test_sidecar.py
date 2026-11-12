@@ -14,6 +14,7 @@ import json
 import os
 import subprocess
 import sys
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -32,6 +33,14 @@ def launch(exe: str) -> tuple[subprocess.Popen, int]:
     assert line.startswith("SIMCORE_READY port="), f"unexpected first line: {line!r}"
     port = int(line.split("=", 1)[1])
     print(f"ready on port {port} after {time.time() - start:.1f} s")
+
+    # Keep draining stdout like the desktop app does: an unread pipe fills up
+    # (4 KB on Windows) and then blocks the engine on its next write.
+    def echo():
+        for out in proc.stdout:
+            print(f"[engine] {out.rstrip()}", flush=True)
+
+    threading.Thread(target=echo, daemon=True).start()
     return proc, port
 
 
@@ -46,7 +55,7 @@ def main() -> None:
             headers={"X-Simcore-Token": token, "Content-Type": "application/json"},
         )
         try:
-            with urllib.request.urlopen(req, timeout=300) as r:
+            with urllib.request.urlopen(req, timeout=180) as r:
                 return r.status, json.loads(r.read())
         except urllib.error.HTTPError as e:
             return e.code, None

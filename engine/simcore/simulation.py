@@ -10,7 +10,7 @@ import numpy as np
 
 from simcore.attitude import AttitudeModel, gcrs_axes_to_itrs
 from simcore.frames import ecef_to_geodetic, gcrs_to_itrs
-from simcore.link.analysis import LinkPass, analyze_pass
+from simcore.link.analysis import LinkPass, analyze_pass, link_atmosphere
 from simcore.link.budget import LinkModel
 from simcore.orbit.elements import KeplerianElements, keplerian_to_cartesian
 from simcore.orbit.propagators import J2Propagator, Propagator, SGP4Propagator, TwoBodyPropagator
@@ -149,10 +149,14 @@ def run(scenario: Scenario) -> SimulationResult:
     for link in scenario.links:
         model = LinkModel(link)
         for cfg in scenario.link_stations(link):
+            if not passes[cfg.name]:
+                continue
+            atmosphere = link_atmosphere(scenario.atmosphere, link, cfg)
             for k, p in enumerate(passes[cfg.name]):
                 link_passes.append(
                     analyze_pass(
-                        model, propagator, attitude, stations[cfg.name], start, p, k, sim.link_step_seconds
+                        model, propagator, attitude, stations[cfg.name], start, p, k,
+                        sim.link_step_seconds, atmosphere,
                     )
                 )
 

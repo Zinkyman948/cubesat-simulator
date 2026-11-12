@@ -10,7 +10,7 @@ from pathlib import Path
 from pydantic import ValidationError
 
 from simcore import __version__, simulation
-from simcore.link.analysis import budget_table
+from simcore.link.analysis import budget_table, link_atmosphere
 from simcore.link.budget import LinkModel
 from simcore.scenario import Scenario, load_scenario
 
@@ -123,8 +123,17 @@ def _cmd_budget(args) -> int:
         model = LinkModel(link)
         for gs in scenario.link_stations(link):
             elevations = [gs.min_elevation_deg, 90.0]
-            tables = [budget_table(model, altitude, gs.altitude_m / 1000.0, el) for el in elevations]
-            print(f"\n{link.name} ({link.direction}) - {gs.name}, altitude {altitude:.1f} km")
+            atmosphere = link_atmosphere(scenario.atmosphere, link, gs)
+            tables = [
+                budget_table(model, altitude, gs.altitude_m / 1000.0, el, atmosphere) for el in elevations
+            ]
+            atm = scenario.atmosphere
+            weather = (
+                f"ITU-R atmosphere, {atm.availability_percent:g}% availability"
+                if atm.model == "itu-r"
+                else "no atmosphere model"
+            )
+            print(f"\n{link.name} ({link.direction}) - {gs.name}, altitude {altitude:.1f} km, {weather}")
             print(f"  {'':<38}{'At mask':>10}{'Zenith':>10}")
             for (label, low, unit), (_, high, _) in zip(*tables):
                 print(f"  {label:<38}{low:10.2f}{high:10.2f}  {unit}")

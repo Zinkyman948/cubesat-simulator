@@ -8,10 +8,12 @@ import numpy as np
 from skyfield.timelib import Time
 
 from simcore.attitude import AttitudeModel, station_positions_gcrs
+from simcore.environment.atmosphere import SlantPathAtmosphere
 from simcore.frames import gcrs_to_itrs
-from simcore.link.antenna import gain_dbi, unit_axis
+from simcore.link.antenna import gain_dbi, peak_gain_dbi, unit_axis
 from simcore.link.budget import LinkModel, LinkSamples
-from simcore.link.rf import BOLTZMANN_DBW, db, slant_range_km
+from simcore.link.rf import BOLTZMANN_DBW, db, slant_range_km, undb, wavelength_m
+from simcore.scenario.models import AtmosphereConfig, GroundStationConfig, LinkConfig
 from simcore.orbit.propagators import Propagator
 from simcore.timeutil import from_datetime, offset, seconds_between
 from simcore.visibility.groundstation import GroundStation
@@ -54,6 +56,37 @@ class LinkPass:
         return out
 
 
+# Aperture efficiency assumed for non-dish ground antennas when sizing them
+# for scintillation (the P.618 default).
+EQUIVALENT_APERTURE_EFFICIENCY = 0.5
+
+
+def link_atmosphere(
+    config: AtmosphereConfig, link: LinkConfig, station: GroundStationConfig
+) -> SlantPathAtmosphere | None:
+    """The tropospheric model for one link at one station (None if disabled)."""
+    if config.model == "none":
+        return None
+    antenna = link.ground_antenna
+    if antenna.pattern == "dish":
+        diameter, efficiency = antenna.dish_diameter_m, antenna.dish_efficiency
+    else:
+        # Equivalent circular aperture with the same gain: D = (lambda/pi) sqrt(G/eta).
+        efficiency = EQUIVALENT_APERTURE_EFFICIENCY
+        gain = undb(peak_gain_dbi(antenna, link.frequency_hz))
+        diameter = wavelength_m(link.frequency_hz) / np.pi * np.sqrt(gain / efficiency)
+    return SlantPathAtmosphere(
+        station.latitude_deg,
+        station.longitude_deg,
+        station.altitude_m / 1000.0,
+        link.frequency_hz,
+        config.exceedance_percent,
+        float(diameter),
+        efficiency,
+        station.min_elevation_deg,
+    )
+
+
 def time_above_zero(t: np.ndarray, y: np.ndarray) -> float:
     """Total time a sampled signal spends >= 0, linearly interpolating crossings."""
     total = 0.0
@@ -75,6 +108,7 @@ def analyze_pass(
     pass_: Pass,
     pass_index: int,
     step_s: float,
+    atmosphere: SlantPathAtmosphere | None = None,
 ) -> LinkPass:
     s_aos = float(seconds_between(start, from_datetime(pass_.aos)))
     s_los = float(seconds_between(start, from_datetime(pass_.los)))
@@ -98,6 +132,7 @@ def analyze_pass(
         angles.elevation,
         sc_gain_dbi=gain_dbi(sc_antenna, model.config.frequency_hz, cos_theta),
         sc_angle_deg=np.degrees(np.arccos(cos_theta)),
+        atmosphere=atmosphere.at(np.degrees(angles.elevation)) if atmosphere else None,
     )
 
     doppler_rate = (
@@ -121,13 +156,18 @@ def analyze_pass(
 
 
 def budget_table(
-    model: LinkModel, altitude_km: float, station_alt_km: float, elevation_deg: float
+    model: LinkModel,
+    altitude_km: float,
+    station_alt_km: float,
+    elevation_deg: float,
+    atmosphere: SlantPathAtmosphere | None = None,
 ) -> list[tuple[str, float, str]]:
     """Classic link budget line items at a single elevation angle (peak antenna gains)."""
     cfg = model.config
     el = np.radians(elevation_deg)
     rng = float(slant_range_km(el, altitude_km, station_alt_km))
-    s = model.evaluate(np.array([rng]), np.array([0.0]), np.array([el]))
+    atm = atmosphere.at(np.array([elevation_deg])) if atmosphere else None
+    s = model.evaluate(np.array([rng]), np.array([0.0]), np.array([el]), atmosphere=atm)
     first = {k: float(np.asarray(v)[0]) for k, v in s.__dict__.items()}
     return [
         ("Frequency", cfg.frequency_mhz, "MHz"),
@@ -138,12 +178,16 @@ def budget_table(
         ("Transmit antenna gain (peak)", model.tx_antenna_gain_dbi, "dBi"),
         ("EIRP", model.eirp_dbw, "dBW"),
         ("Free-space path loss", -first["path_loss_db"], "dB"),
-        ("Atmospheric loss", -first["atmospheric_loss_db"], "dB"),
+        ("Gaseous absorption", -first["gas_loss_db"], "dB"),
+        ("Cloud attenuation", -first["cloud_loss_db"], "dB"),
+        ("Rain attenuation", -first["rain_loss_db"], "dB"),
+        ("Scintillation", -first["scintillation_db"], "dB"),
+        ("Atmospheric loss (combined)", -first["atmospheric_loss_db"], "dB"),
         ("Polarization loss", -cfg.losses.polarization_db, "dB"),
         ("Pointing loss", -cfg.losses.pointing_db, "dB"),
         ("Receive antenna gain (peak)", model.rx_antenna_gain_dbi, "dBi"),
         ("Received power", first["received_power_dbm"], "dBm"),
-        ("System noise temperature", model.system_noise_temp_k, "K"),
+        ("System noise temperature", first["system_noise_temp_k"], "K"),
         ("G/T", model.g_over_t_dbk, "dB/K"),
         ("Boltzmann constant", BOLTZMANN_DBW, "dBW/K/Hz"),
         ("C/N0", first["cn0_dbhz"], "dB-Hz"),

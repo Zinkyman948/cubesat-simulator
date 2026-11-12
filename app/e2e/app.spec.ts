@@ -121,6 +121,31 @@ test("attitude and antenna patterns drive the spacecraft antenna gain", async ({
   expect(errors).toEqual([]);
 });
 
+test("ITU-R atmosphere: X-band loses more than S-band, and can be switched off", async ({ page }) => {
+  await openApp(page);
+  // A Boulder pass: both the S-band and X-band links serve it.
+  await page.locator("table.data tbody tr", { hasText: "Boulder" }).first().click();
+  await page.getByLabel("Second chart").selectOption("atmosphere");
+  const chart = page.locator(".chart").nth(1);
+  const readout = async () => {
+    await chart.locator(".u-over").hover({ position: { x: 30, y: 40 } }); // near AOS, low elevation
+    const text = (await chart.locator(".u-legend").textContent()) ?? "";
+    const value = (link: string) => Number(new RegExp(`${link}\\s*([\\d.]+) dB`).exec(text)?.[1]);
+    return { s: value("S-band payload"), x: value("X-band payload") };
+  };
+
+  const withAtmosphere = await readout();
+  expect(withAtmosphere.x).toBeGreaterThan(withAtmosphere.s);
+  expect(withAtmosphere.s).toBeGreaterThan(0);
+
+  await page.getByLabel("Atmosphere", { exact: true }).selectOption("none");
+  await page.getByRole("button", { name: "Run", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Run", exact: true })).toBeEnabled();
+  await page.locator("table.data tbody tr", { hasText: "Boulder" }).first().click();
+  const without = await readout();
+  expect(without).toEqual({ s: 0, x: 0 });
+});
+
 test("drafts survive a reload and can be reverted", async ({ page }) => {
   await openApp(page);
   await field(page, "Inclination").locator("input").fill("98.1");

@@ -4,14 +4,14 @@ Tauri 2 shell + React/TypeScript frontend. The frontend talks to the Python
 engine (`simcore serve`) over a local HTTP API:
 
 ```
-Tauri (Rust) ──spawns──▶ simcore-server sidecar (PyInstaller build of the engine)
+Tauri (Rust) ──spawns──▶ engine/simcore-server (PyInstaller folder build, bundled as a resource)
      │                        ▲  random localhost port + per-launch token
      └─ webview: React UI ────┘  Cesium globe, pass table, uPlot charts
 ```
 
 - `src/` - React UI (`api.ts` finds the engine; `components/` holds the globe, charts and tables)
 - `src-tauri/` - Rust shell (`src/lib.rs` starts and supervises the engine)
-- `src-tauri/binaries/` - the engine sidecar, built by `scripts/build_engine.py` (not committed)
+- `src-tauri/engine/` - the packaged engine, built by `scripts/build_engine.py` (not committed)
 
 ## Just want to run it?
 
@@ -42,15 +42,19 @@ Prerequisites (Windows): [Rust](https://rustup.rs),
 top-level README. WebView2 is preinstalled on Windows 10/11.
 
 ```powershell
-.venv\Scripts\pip install pyinstaller
-.venv\Scripts\python scripts\build_engine.py     # builds the sidecar (rerun after engine changes)
+# Package the engine (rerun after engine changes). Use a separate, clean
+# environment: test tools like pytest in the dev venv break astropy's
+# PyInstaller hook.
+py -V:3.13 -m venv build\buildenv
+build\buildenv\Scripts\pip install .\engine pyinstaller
+build\buildenv\Scripts\python scripts\build_engine.py
 cd app
 npm install
 npx tauri dev                                    # dev window with hot reload
 npx tauri build                                  # installer in src-tauri\target\release\bundle\nsis
 ```
 
-To skip rebuilding the sidecar while iterating on engine code in a debug build,
+To skip rebuilding the engine while iterating on engine code in a debug build,
 run `simcore serve` yourself and start the app with `$env:SIMCORE_DEV_PORT=8765`.
 
 ## End-to-end tests

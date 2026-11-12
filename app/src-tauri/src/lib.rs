@@ -1,5 +1,5 @@
-//! Desktop shell: starts the Python simulation engine as a sidecar process
-//! and tells the frontend where to reach it.
+//! Desktop shell: starts the Python simulation engine (bundled as a resource
+//! folder, see scripts/build_engine.py) and tells the frontend where to reach it.
 //!
 //! The engine binds a free localhost port and prints `SIMCORE_READY port=<n>`.
 //! Every request must carry the random per-launch token we pass it in the
@@ -47,8 +47,7 @@ fn engine_info(state: State<EngineState>) -> Result<Option<EngineInfo>, String> 
 }
 
 /// Stop the engine and wait for it to exit, so an update can replace its
-/// executable. Asks it to exit via stdin first: on Windows, killing the
-/// PyInstaller launcher alone would leave the Python process running.
+/// files. Asks it to exit via stdin first, so it shuts down cleanly.
 #[tauri::command]
 async fn stop_engine(state: State<'_, EngineState>) -> Result<(), String> {
     let Some(mut child) = state.child.lock().unwrap().take() else {
@@ -75,10 +74,18 @@ fn start_engine(app: &AppHandle) -> Result<(), String> {
     }
 
     let token = uuid::Uuid::new_v4().simple().to_string();
+    let exe = app
+        .path()
+        .resource_dir()
+        .map_err(|e| e.to_string())?
+        .join("engine")
+        .join(if cfg!(windows) { "simcore-server.exe" } else { "simcore-server" });
+    if !exe.exists() {
+        return Err(format!("engine not found at {}", exe.display()));
+    }
     let (mut events, child) = app
         .shell()
-        .sidecar("simcore-server")
-        .map_err(|e| e.to_string())?
+        .command(exe)
         .args(["serve", "--port", "0", "--exit-on-stdin-close"])
         .env("SIMCORE_TOKEN", &token)
         .spawn()

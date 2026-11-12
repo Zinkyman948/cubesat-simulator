@@ -27,6 +27,19 @@ const METRICS = {
     pick: (lp: LinkPass) => lp.series.received_power_dbm,
   },
   ebn0: { label: "Eb/N0", unit: "dB", decimals: 1, pick: (lp: LinkPass) => lp.series.ebn0_db },
+  atmosphere: {
+    label: "Atmospheric loss",
+    unit: "dB",
+    decimals: 2,
+    pick: (lp: LinkPass) => lp.series.atmospheric_loss_db,
+  },
+  rain: { label: "Rain attenuation", unit: "dB", decimals: 2, pick: (lp: LinkPass) => lp.series.rain_loss_db },
+  noise: {
+    label: "System noise temperature",
+    unit: "K",
+    decimals: 0,
+    pick: (lp: LinkPass) => lp.series.system_noise_temp_k,
+  },
   pathLoss: {
     label: "Free-space path loss",
     unit: "dB",

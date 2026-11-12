@@ -68,7 +68,7 @@ jobs:
 
       - name: Smoke-test engine sidecar
         shell: bash
-        run: python scripts/test_sidecar.py app/src-tauri/binaries/simcore-server-*.exe
+        run: python scripts/test_sidecar.py app/src-tauri/engine/simcore-server.exe
 
       - name: Install frontend dependencies
         working-directory: app

@@ -30,7 +30,7 @@ const TEMPLATES: Record<string, { label: string; link: Record<string, unknown> }
         noise_figure_db: 1.0,
         line_loss_db: 0.5,
       },
-      losses: { polarization_db: 3.0, pointing_db: 1.0, implementation_db: 1.5, atmospheric_zenith_db: 0.1 },
+      losses: { polarization_db: 3.0, pointing_db: 1.0, implementation_db: 1.5 },
     },
   },
   sband: {
@@ -49,7 +49,26 @@ const TEMPLATES: Record<string, { label: string; link: Record<string, unknown> }
         noise_figure_db: 0.8,
         line_loss_db: 0.3,
       },
-      losses: { polarization_db: 0.5, pointing_db: 0.5, implementation_db: 2.0, atmospheric_zenith_db: 0.05 },
+      losses: { polarization_db: 0.5, pointing_db: 0.5, implementation_db: 2.0 },
+    },
+  },
+  xband: {
+    label: "X-band payload downlink",
+    link: {
+      name: "X-band payload",
+      direction: "downlink",
+      frequency_mhz: 8200,
+      data_rate_bps: 25000000,
+      modulation: "qpsk",
+      coding: { gain_db: 7.0, rate: 0.5 },
+      transmitter: { power_w: 2.0, line_loss_db: 1.0, antenna: { pattern: "cosine", gain_dbi: 12.0, axis: [0, 0, 1] } },
+      receiver: {
+        antenna: { dish_diameter_m: 5.4, dish_efficiency: 0.6 },
+        antenna_noise_temp_k: 60,
+        noise_figure_db: 0.6,
+        line_loss_db: 0.2,
+      },
+      losses: { polarization_db: 0.3, pointing_db: 0.5, implementation_db: 2.0 },
     },
   },
   vhf: {
@@ -67,7 +86,7 @@ const TEMPLATES: Record<string, { label: string; link: Record<string, unknown> }
         noise_figure_db: 2.0,
         line_loss_db: 0.5,
       },
-      losses: { polarization_db: 3.0, pointing_db: 1.0, implementation_db: 3.0, atmospheric_zenith_db: 0.1 },
+      losses: { polarization_db: 3.0, pointing_db: 1.0, implementation_db: 3.0 },
     },
   },
 };
@@ -375,10 +394,11 @@ function LinkCard({ index, stations }: { index: number; stations: GroundStationC
         <NumberField path={[...base, "losses", "implementation_db"]} label="Implementation" unit="dB" optional placeholder="1" />
         <NumberField
           path={[...base, "losses", "atmospheric_zenith_db"]}
-          label="Atmosphere at zenith"
+          label="Extra loss at zenith"
           unit="dB"
           optional
           placeholder="0"
+          hint="E.g. radome; on top of the atmosphere model"
         />
 
         <StationPicker index={index} stations={stations} />

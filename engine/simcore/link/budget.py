@@ -11,6 +11,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
+from simcore.environment.atmosphere import AtmosphericLoss
 from simcore.link import modulation
 from simcore.link.antenna import peak_gain_dbi
 from simcore.link.rf import (
@@ -35,7 +36,12 @@ class LinkSamples:
     delay_ms: np.ndarray
     doppler_hz: np.ndarray
     path_loss_db: np.ndarray
-    atmospheric_loss_db: np.ndarray
+    atmospheric_loss_db: np.ndarray  # everything below, combined
+    gas_loss_db: np.ndarray
+    cloud_loss_db: np.ndarray
+    rain_loss_db: np.ndarray
+    scintillation_db: np.ndarray
+    system_noise_temp_k: np.ndarray
     received_power_dbm: np.ndarray
     cn0_dbhz: np.ndarray
     esn0_db: np.ndarray
@@ -86,18 +92,27 @@ class LinkModel:
         elevation_rad,
         sc_gain_dbi=None,
         sc_angle_deg=None,
+        atmosphere: AtmosphericLoss | None = None,
     ) -> LinkSamples:
         """Link quantities over arrays of geometry.
 
         `sc_gain_dbi` is the spacecraft antenna's gain toward the station at
-        each epoch (from attitude and pattern); without it the peak gain is used.
+        each epoch (from attitude and pattern); without it the peak gain is
+        used. `atmosphere` adds tropospheric losses and, for downlinks, the
+        sky noise from rain and cloud at the ground receiver.
         """
         cfg = self.config
         range_km = np.asarray(range_km, dtype=float)
+        shape = range_km.shape
+        zeros = np.zeros(shape)
         path_loss = free_space_path_loss_db(range_km, cfg.frequency_hz)
-        atm_loss = cfg.losses.atmospheric_zenith_db * atmospheric_path_factor(elevation_rad)
+        extra_loss = cfg.losses.atmospheric_zenith_db * atmospheric_path_factor(elevation_rad)
+        atm = atmosphere or AtmosphericLoss(zeros, zeros, zeros, zeros, zeros, zeros)
+        atm_loss = atm.total_db + extra_loss
 
         downlink = cfg.direction == "downlink"
+        # Rain and cloud also radiate noise into a ground receiving antenna.
+        t_sys = self.system_noise_temp_k + (atm.sky_noise_k if downlink else zeros)
         sc_peak = self.tx_antenna_gain_dbi if downlink else self.rx_antenna_gain_dbi
         sc_gain = np.broadcast_to(sc_peak if sc_gain_dbi is None else sc_gain_dbi, range_km.shape)
         tx_gain = sc_gain if downlink else self.tx_antenna_gain_dbi
@@ -105,7 +120,7 @@ class LinkModel:
         eirp = self.eirp_dbw - self.tx_antenna_gain_dbi + tx_gain
 
         received_dbw = eirp - path_loss - atm_loss - self.fixed_losses_db + rx_gain
-        cn0 = received_dbw - BOLTZMANN_DBW - db(self.system_noise_temp_k)
+        cn0 = received_dbw - BOLTZMANN_DBW - db(t_sys)
         # Implementation loss degrades the effective SNR seen by the demodulator.
         ebn0 = cn0 - db(cfg.data_rate_bps) - cfg.losses.implementation_db
         esn0 = ebn0 + db(cfg.data_rate_bps / self.symbol_rate_baud)
@@ -120,6 +135,11 @@ class LinkModel:
             doppler_hz=doppler_shift_hz(range_rate_km_s, cfg.frequency_hz),
             path_loss_db=path_loss,
             atmospheric_loss_db=atm_loss,
+            gas_loss_db=np.asarray(atm.gas_db, dtype=float),
+            cloud_loss_db=np.asarray(atm.cloud_db, dtype=float),
+            rain_loss_db=np.asarray(atm.rain_db, dtype=float),
+            scintillation_db=np.asarray(atm.scintillation_db, dtype=float),
+            system_noise_temp_k=np.broadcast_to(t_sys, shape).astype(float),
             received_power_dbm=received_dbw + 30.0,
             cn0_dbhz=cn0,
             esn0_db=esn0,

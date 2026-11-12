@@ -241,8 +241,8 @@ class Losses(_Model):
     polarization_db: float = Field(default=0.0, ge=0)
     pointing_db: float = Field(default=0.0, ge=0)
     implementation_db: float = Field(default=1.0, ge=0)
-    # Gaseous/cloud loss at zenith, scaled by slant path. A placeholder
-    # until the ITU-R models land.
+    # Extra loss at zenith, scaled by slant path (e.g. a radome or wet
+    # antenna). Added on top of the scenario's atmosphere model.
     atmospheric_zenith_db: float = Field(default=0.0, ge=0)
 
 
@@ -266,6 +266,27 @@ class LinkConfig(_Model):
     @property
     def spacecraft_antenna(self) -> Antenna:
         return self.transmitter.antenna if self.direction == "downlink" else self.receiver.antenna
+
+    @property
+    def ground_antenna(self) -> Antenna:
+        return self.receiver.antenna if self.direction == "downlink" else self.transmitter.antenna
+
+
+class AtmosphereConfig(_Model):
+    """Tropospheric propagation model for all links.
+
+    - itu-r: gas, cloud, rain and scintillation from the ITU-R models at each
+      ground station, not exceeded for `availability_percent` of the year.
+    - none: free space only (plus any per-link atmospheric_zenith_db).
+    """
+
+    model: Literal["itu-r", "none"] = "itu-r"
+    # 99 % is a common CubeSat design point; the rain model covers 95-99.999 %.
+    availability_percent: float = Field(default=99.0, ge=95.0, le=99.999)
+
+    @property
+    def exceedance_percent(self) -> float:
+        return 100.0 - self.availability_percent
 
 
 class SimulationConfig(_Model):
@@ -294,6 +315,7 @@ class Scenario(_Model):
     propagator: Literal["two_body", "j2", "sgp4"]
     ground_stations: list[GroundStationConfig] = Field(min_length=1)
     links: list[LinkConfig] = []
+    atmosphere: AtmosphereConfig = AtmosphereConfig()
 
     @model_validator(mode="after")
     def _check_propagator(self):

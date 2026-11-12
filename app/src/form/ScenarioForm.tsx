@@ -84,6 +84,25 @@ export default function ScenarioForm({ yaml, onChange, issues }: Props) {
           <AttitudeFields />
         </Section>
 
+        <Section title="Propagation">
+          <SelectField
+            path={["atmosphere", "model"]}
+            label="Atmosphere"
+            options={[
+              { value: "itu-r", label: "ITU-R (gas, cloud, rain, scintillation)" },
+              { value: "none", label: "None (free space)" },
+            ]}
+          />
+          <NumberField
+            path={["atmosphere", "availability_percent"]}
+            label="Link availability"
+            unit="%"
+            optional
+            placeholder="99"
+            hint="Losses not exceeded for this % of an average year (95-99.999)"
+          />
+        </Section>
+
         <OrbitSection />
         <StationsSection />
         <LinksSection />

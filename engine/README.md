@@ -48,8 +48,9 @@ margin    = Eb/N0 - (Eb/N0_required,uncoded(BER) - coding gain)
 - **FSPL**: Friis free-space loss from the actual slant range.
 - **T_sys**: given directly, or computed as `T_ant + T0 (L - 1) + L T_LNA`,
   referred to the antenna terminals.
-- **Atmosphere**: zenith loss scaled by slant path through an 8 km spherical
-  shell. A placeholder until the ITU-R models (P.676/P.618) are added.
+- **Atmosphere**: ITU-R models at each ground station (see below), plus an
+  optional per-link `atmospheric_zenith_db` extra loss (e.g. a radome) scaled
+  by slant path through an 8 km spherical shell.
 - **Modulations**: BPSK, QPSK, 8PSK, coherent and non-coherent BFSK, and GMSK
   (BT = 0.25 approximation), using uncoded AWGN BER curves.
 - **Coding**: a fixed coding gain plus a code rate; the coded BER is
@@ -60,6 +61,26 @@ margin    = Eb/N0 - (Eb/N0_required,uncoded(BER) - coding gain)
   interpolating the crossings.
 - Spacecraft antenna gain comes from the antenna pattern and the attitude
   (see below); ground antennas are assumed to track and use their peak gain.
+
+## Atmosphere (ITU-R)
+
+`atmosphere.model: itu-r` (the default) computes tropospheric losses with
+ITU-Rpy for each station and link, not exceeded for `availability_percent`
+of an average year (default 99 %):
+
+- gaseous absorption (P.676), cloud (P.840), rain (P.837/P.838/P.839) and
+  scintillation, combined per P.618: `A_gas + sqrt((A_rain + A_cloud)^2 + A_scint^2)`
+- local climate (rain rate, water vapour, temperature, cloud water) from the
+  ITU digital maps
+- scintillation uses the ground antenna's aperture: the dish diameter, or the
+  equivalent diameter `(lambda/pi) sqrt(G/0.5)` for other antennas
+- rain and cloud raise a ground receiver's noise temperature by
+  `275 K (1 - 10^(-(A_rain + A_cloud)/10))` (downlinks only)
+
+Losses are computed on an elevation grid once per station and link, then
+interpolated. The ITU-R models cover 1-55 GHz and elevations of 5 deg or more;
+below 1 GHz (UHF/VHF) the values are tiny, and below 5 deg they are
+extrapolated. `model: none` gives free-space propagation.
 
 ## Attitude and antenna patterns
 

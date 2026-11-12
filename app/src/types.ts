@@ -38,6 +38,11 @@ export interface LinkSeries {
   ber: number[];
   sc_antenna_gain_dbi: number[];
   sc_antenna_angle_deg: number[];
+  gas_loss_db: number[];
+  cloud_loss_db: number[];
+  rain_loss_db: number[];
+  scintillation_db: number[];
+  system_noise_temp_k: number[];
 }
 
 export interface LinkPass {

@@ -178,5 +178,11 @@ def serve(host: str = "127.0.0.1", port: int = 0, exit_on_stdin_close: bool = Fa
     config = uvicorn.Config(create_app(token=token), log_level="warning")
     server = uvicorn.Server(config)
 
+    # Load the ITU-R climate maps in the background so the first simulation
+    # doesn't pay for it.
+    from simcore.environment.atmosphere import warm_up
+
+    threading.Thread(target=warm_up, daemon=True).start()
+
     print(f"SIMCORE_READY port={bound_port}", flush=True)
     server.run(sockets=[sock])

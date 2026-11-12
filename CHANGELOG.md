@@ -11,6 +11,13 @@
   angle, received power, Eb/N0, path loss or Doppler rate.
 - Multi-link chart readouts now show a value for every link.
 - The demo scenario uses realistic antennas (turnstile, patch, monopole).
+- ITU-R atmosphere: gas, cloud, rain and scintillation losses at each ground
+  station from the ITU climate maps, for a chosen link availability (99 % by
+  default). Rain and cloud also raise downlink receiver noise.
+- New pass charts: atmospheric loss, rain attenuation and system noise
+  temperature. An X-band link template and demo link show rain fade.
+- The engine is now installed as a folder alongside the app, so it starts
+  faster despite the larger ITU-R data.
 
 ## 0.2.1 - 2026-11-12
 

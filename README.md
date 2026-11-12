@@ -20,12 +20,14 @@ via GitHub Releases.
 
 ## Quick start
 
-Requires Python 3.11 or newer.
+Requires **Python 3.11 – 3.13**. Brand-new Python releases (e.g. 3.15) can lack
+prebuilt packages for numpy/scipy/PyYAML, which makes pip try to compile them.
 
 **Windows (PowerShell)**, from the repository folder:
 
 ```powershell
-py -m venv .venv
+py install 3.13                      # Python install manager; or install 3.13 from python.org
+py -V:3.13 -m venv .venv             # with a python.org install: py -3.13 -m venv .venv
 .venv\Scripts\pip install -e "engine[dev]"
 .venv\Scripts\simcore run scenarios\sso_3u_demo.yaml
 .venv\Scripts\simcore budget scenarios\sso_3u_demo.yaml

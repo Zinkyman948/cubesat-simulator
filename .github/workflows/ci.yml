@@ -1,0 +1,42 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  engine-tests:
+    name: Engine tests (${{ matrix.os }}, Python ${{ matrix.python }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+        python: ["3.11", "3.12", "3.13"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+          cache-dependency-path: engine/pyproject.toml
+
+      - name: Install engine
+        run: python -m pip install -e "engine[dev]"
+
+      - name: Run tests
+        run: python -m pytest engine -v
+
+      - name: Smoke-test the CLI
+        run: |
+          simcore run scenarios/sso_3u_demo.yaml --json out/demo.json
+          simcore run scenarios/iss_tle_sgp4.yaml
+          simcore budget scenarios/sso_3u_demo.yaml

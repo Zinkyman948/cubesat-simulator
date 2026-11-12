@@ -27,3 +27,7 @@ packages = ["simcore"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+filterwarnings = [
+    # Raised inside skyfield's event search on NumPy >= 2.5; not our code.
+    "ignore:Setting the dtype on a NumPy array:DeprecationWarning:skyfield",
+]

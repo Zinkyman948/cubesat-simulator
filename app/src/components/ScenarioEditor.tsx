@@ -12,7 +12,10 @@ interface Props {
   yaml: string;
   onYamlChange: (text: string) => void;
   edited: boolean;
+  /** The draft was made from an older version of this example. */
+  outdated: boolean;
   onRevert: () => void;
+  onKeepDraft: () => void;
   onRun: () => void;
   running: boolean;
   disabled: boolean;
@@ -49,7 +52,20 @@ export default function ScenarioEditor(props: Props) {
             {running ? "Running…" : "Run"}
           </button>
         </div>
-        {props.edited && (
+        {props.outdated && (
+          <div className="outdated-notice" role="status">
+            <p>This example was updated since you edited it. Your saved edits are based on the older version.</p>
+            <div className="row">
+              <button type="button" className="primary" onClick={props.onRevert}>
+                Load updated example
+              </button>
+              <button type="button" onClick={props.onKeepDraft}>
+                Keep my edits
+              </button>
+            </div>
+          </div>
+        )}
+        {props.edited && !props.outdated && (
           <div className="row edited-row">
             <span className="hint">Edited · saved automatically</span>
             <button type="button" className="link-button" onClick={props.onRevert}>

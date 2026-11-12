@@ -128,6 +128,8 @@ test("ITU-R atmosphere: X-band loses more than S-band, and can be switched off",
   await page.getByLabel("Second chart").selectOption("atmosphere");
   const chart = page.locator(".chart").nth(1);
   const readout = async () => {
+    // Move away first: re-hovering the same spot on a rebuilt chart fires no event.
+    await page.mouse.move(0, 0);
     await chart.locator(".u-over").hover({ position: { x: 30, y: 40 } }); // near AOS, low elevation
     const text = (await chart.locator(".u-legend").textContent()) ?? "";
     const value = (link: string) => Number(new RegExp(`${link}\\s*([\\d.]+) dB`).exec(text)?.[1]);
@@ -159,6 +161,44 @@ test("drafts survive a reload and can be reverted", async ({ page }) => {
   await page.getByRole("button", { name: "Revert to example" }).click();
   await expect(page.locator(".edited-row")).toBeHidden();
   await expect(field(page, "Inclination").locator("input")).toHaveValue("97.4");
+});
+
+test("a draft of an older example version offers the updated example", async ({ page }) => {
+  await openApp(page);
+  const current = await yamlText(page);
+  // A draft saved by an older app version: no record of which example it came from.
+  const stale = current.replace("name: SSO 3U demo", "name: My old SSO edit");
+  await page.evaluate((y) => localStorage.setItem("cubesat-sim:draft:sso_3u_demo", y), stale);
+  await page.reload();
+  await expect(page.locator(".outdated-notice")).toBeVisible();
+
+  // Keeping the edits dismisses the notice for good.
+  await page.getByRole("button", { name: "Keep my edits" }).click();
+  await expect(page.locator(".outdated-notice")).toBeHidden();
+  await expect(page.locator(".edited-row")).toBeVisible();
+  await page.reload();
+  await expect(page.locator("table.data tbody tr").first()).toBeVisible();
+  await expect(page.locator(".outdated-notice")).toBeHidden();
+  await expect(page.locator(".topbar .scenario-name")).toHaveText("My old SSO edit");
+
+  // Loading the updated example replaces the draft.
+  await page.evaluate(() => localStorage.removeItem("cubesat-sim:draft-base:sso_3u_demo"));
+  await page.reload();
+  await page.getByRole("button", { name: "Load updated example" }).click();
+  await expect(page.locator(".outdated-notice")).toBeHidden();
+  await expect(page.locator(".topbar .scenario-name")).toHaveText("SSO 3U demo");
+});
+
+test("tiny values keep meaningful axis labels and readouts", async ({ page }) => {
+  await openApp(page);
+  // UHF/VHF rain loss is around 1e-5 dB: it must not read as 0.
+  await page.locator("table.data tbody tr").first().click();
+  await page.getByLabel("Second chart").selectOption("rain");
+  const chart = page.locator(".chart").nth(1);
+  const ticks = await chart.locator(".u-axis").nth(1).locator(".u-label, div").allTextContents();
+  await chart.locator(".u-over").hover({ position: { x: 40, y: 30 } });
+  await expect(chart.locator(".u-legend")).toContainText(/UHF telemetry\s*[1-9][\d.]*e-\d+ dB|UHF telemetry\s*0\.0+[1-9]\d* dB/);
+  expect(ticks.join(" ")).not.toMatch(/^(\s*0\s*)+$/);
 });
 
 test("a YAML syntax error blocks the form with an explanation", async ({ page }) => {

@@ -24,6 +24,20 @@ function fmtUtc(ts: number, withSeconds = true) {
   return new Date(ts * 1000).toISOString().slice(11, withSeconds ? 19 : 16);
 }
 
+/** Axis tick labels with just enough decimals for the tick spacing. */
+function fmtTicks(splits: number[], incr: number): string[] {
+  const decimals = Math.min(6, Math.max(0, Math.ceil(-Math.log10(incr) - 1e-9)));
+  return splits.map((v) =>
+    v.toLocaleString("en-US", { minimumFractionDigits: decimals, maximumFractionDigits: decimals }),
+  );
+}
+
+/** Readout value: fixed decimals, or 2 significant figures for values smaller than that. */
+function fmtValue(v: number, decimals: number): string {
+  if (v !== 0 && Math.abs(v) < 0.5 * 10 ** -decimals) return v.toPrecision(2);
+  return v.toFixed(decimals);
+}
+
 export default function LineChart({ title, unit, decimals, x, series, threshold, syncKey }: Props) {
   const host = useRef<HTMLDivElement>(null);
   const themeVersion = useThemeVersion();
@@ -92,7 +106,7 @@ export default function LineChart({ title, unit, decimals, x, series, threshold,
       legend: { live: true },
       axes: [
         { ...axis, values: (_u, splits) => splits.map((ts) => fmtUtc(ts, false)) },
-        { ...axis, size: 48, space: 22 },
+        { ...axis, size: 52, space: 22, values: (_u, splits, _axis, _space, incr) => fmtTicks(splits, incr) },
       ],
       series: [
         { label: "UTC", value: (_u, v) => (v == null ? "--" : fmtUtc(v)) },
@@ -101,7 +115,7 @@ export default function LineChart({ title, unit, decimals, x, series, threshold,
           stroke: s.color,
           width: 2,
           points: { show: false },
-          value: (_u, v) => (v == null ? "--" : `${v.toFixed(decimals)} ${unit}`),
+          value: (_u, v) => (v == null ? "--" : `${fmtValue(v, decimals)} ${unit}`),
         })),
       ],
       hooks: { draw: [drawThreshold, drawEndLabels] },

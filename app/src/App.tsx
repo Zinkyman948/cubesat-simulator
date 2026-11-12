@@ -34,6 +34,8 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   // The example's original text, to detect edits and to revert.
   const [original, setOriginal] = useState("");
+  // The saved draft was edited from an older version of the example.
+  const [outdatedDraft, setOutdatedDraft] = useState(false);
   const [version, setVersion] = useState<string | null>(null);
   useEffect(() => {
     appVersion().then(setVersion).catch(() => {});
@@ -64,7 +66,10 @@ export default function App() {
       setExampleId(id);
       save("example", id);
       setOriginal(ex.yaml);
-      const text = load(`draft:${id}`) ?? ex.yaml;
+      const draft = load(`draft:${id}`);
+      // Drafts remember the example text they started from (older drafts don't).
+      setOutdatedDraft(draft !== null && load(`draft-base:${id}`) !== ex.yaml);
+      const text = draft ?? ex.yaml;
       setYaml(text);
       await run(text);
     },
@@ -74,16 +79,29 @@ export default function App() {
   const changeYaml = useCallback(
     (text: string) => {
       setYaml(text);
-      save(`draft:${exampleIdRef.current}`, text === original ? null : text);
+      const id = exampleIdRef.current;
+      const isDraft = text !== original;
+      save(`draft:${id}`, isDraft ? text : null);
+      // Record which example version the draft is based on (unless it is
+      // already known to be based on an older one).
+      if (!isDraft) save(`draft-base:${id}`, null);
+      else if (!outdatedDraft) save(`draft-base:${id}`, original);
     },
-    [original],
+    [original, outdatedDraft],
   );
 
   const revert = useCallback(() => {
     setYaml(original);
     save(`draft:${exampleIdRef.current}`, null);
+    save(`draft-base:${exampleIdRef.current}`, null);
+    setOutdatedDraft(false);
     run(original);
   }, [original, run]);
+
+  const keepDraft = useCallback(() => {
+    save(`draft-base:${exampleIdRef.current}`, original);
+    setOutdatedDraft(false);
+  }, [original]);
 
   // Live validation while editing, debounced; stale responses are ignored.
   const validationSeq = useRef(0);
@@ -153,7 +171,9 @@ export default function App() {
           yaml={yaml}
           onYamlChange={changeYaml}
           edited={yaml !== original}
+          outdated={outdatedDraft}
           onRevert={revert}
+          onKeepDraft={keepDraft}
           onRun={() => run(yaml)}
           running={running}
           disabled={engine.status !== "ok"}

@@ -329,6 +329,18 @@ button:disabled {
   justify-content: space-between;
 }
 
+.outdated-notice {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border-radius: 6px;
+  background: var(--selected);
+}
+
+.outdated-notice p {
+  margin: 0 0 8px;
+  font-size: 12px;
+}
+
 .link-button {
   height: auto;
   border: none;

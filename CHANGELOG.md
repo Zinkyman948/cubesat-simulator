@@ -18,6 +18,10 @@
   temperature. An X-band link template and demo link show rain fade.
 - The engine is now installed as a folder alongside the app, so it starts
   faster despite the larger ITU-R data.
+- When a built-in example has been updated since you edited it, the editor
+  says so and offers to load the new version or keep your edits.
+- Chart axes and readouts keep meaningful digits for very small values
+  (e.g. 0.00014 dB of rain at S-band) instead of showing 0.
 
 ## 0.2.1 - 2026-11-12
 

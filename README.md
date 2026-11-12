@@ -14,16 +14,19 @@ via GitHub Releases.
 | 1. Engine skeleton | Scenario files, two-body / J2 / SGP4 propagation, frames, pass prediction, CLI | Done |
 | 2. Link budget v1 | Path loss, Doppler, noise, Eb/N0, BER, margin, data volume | Done |
 | 3. Desktop shell | Tauri app, Cesium globe, charts, Python sidecar | Done |
-| 4. Packaging | Windows installer, updater, release CI | Planned |
+| 4. Packaging | Windows installer, signed auto-updates, release CI | Done |
 | 5. Fidelity | Full force model, ITU-R losses, attitude, antennas, eclipses | Planned |
 | 6. Validation & polish | GMAT comparisons, docs, web demo, macOS/Linux | Planned |
 
 ## Get the desktop app
 
-Download the Windows installer from the latest successful
-[CI run](https://github.com/Zinkyman948/cubesat-simulator/actions) (artifact
-**CubeSat-Simulator-Windows-installer**). To build or develop the app, see
-[`app/README.md`](app/README.md).
+Download the Windows installer (`CubeSat.Simulator_<version>_x64-setup.exe`)
+from the [latest release](https://github.com/Zinkyman948/cubesat-simulator/releases/latest).
+The app checks for new versions at startup and can update itself.
+
+The installer isn't code-signed yet, so Windows SmartScreen may warn about an
+unknown publisher: choose **More info → Run anyway**. To build or develop the
+app, see [`app/README.md`](app/README.md).
 
 ## Engine quick start (command line)
 

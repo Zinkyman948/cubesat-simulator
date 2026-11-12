@@ -128,6 +128,58 @@ textarea {
   color: var(--text-secondary);
 }
 
+.app-version {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.update-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-left: 16px;
+  padding: 4px 6px 4px 12px;
+  border-radius: 6px;
+  background: var(--selected);
+  font-size: 12px;
+}
+
+.update-banner button.primary {
+  height: 26px;
+}
+
+.update-banner.failed {
+  background: none;
+  border: 1px solid var(--status-critical);
+}
+
+.update-notes {
+  position: relative;
+}
+
+.update-notes summary {
+  cursor: pointer;
+  color: var(--accent);
+}
+
+.update-notes pre {
+  position: absolute;
+  top: 24px;
+  left: 0;
+  z-index: 10;
+  width: 420px;
+  max-height: 320px;
+  overflow: auto;
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface-raised);
+  font: 12px/1.5 var(--sans);
+  white-space: pre-wrap;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.25);
+}
+
 .engine-status {
   margin-left: auto;
   display: flex;

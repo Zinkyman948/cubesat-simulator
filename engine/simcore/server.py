@@ -158,11 +158,13 @@ def serve(host: str = "127.0.0.1", port: int = 0, exit_on_stdin_close: bool = Fa
     bound_port = sock.getsockname()[1]
 
     if exit_on_stdin_close:
-        # The desktop shell holds our stdin open; EOF means it is gone, so
-        # don't linger as an orphan.
+        # The desktop shell holds our stdin open. EOF means it is gone, so
+        # don't linger as an orphan; an "exit" line is a deliberate stop
+        # (e.g. before an update replaces this executable).
         def watch_stdin():
-            for _ in sys.stdin:
-                pass
+            for line in sys.stdin:
+                if line.strip() == "exit":
+                    break
             os._exit(0)
 
         threading.Thread(target=watch_stdin, daemon=True).start()

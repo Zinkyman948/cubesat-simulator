@@ -5,7 +5,9 @@ import PassCharts from "./components/PassCharts";
 import PassTable from "./components/PassTable";
 import ScenarioEditor from "./components/ScenarioEditor";
 import Summary from "./components/Summary";
+import UpdateBanner from "./components/UpdateBanner";
 import { load, save } from "./storage";
+import { appVersion } from "./updater";
 import type { ExampleSummary, PassRef, SimulationResult, ValidationIssue } from "./types";
 
 type EngineState = { status: "starting" } | { status: "ok"; version: string } | { status: "error"; message: string };
@@ -32,6 +34,10 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   // The example's original text, to detect edits and to revert.
   const [original, setOriginal] = useState("");
+  const [version, setVersion] = useState<string | null>(null);
+  useEffect(() => {
+    appVersion().then(setVersion).catch(() => {});
+  }, []);
   const exampleIdRef = useRef("");
 
   const run = useCallback(async (text: string) => {
@@ -130,7 +136,9 @@ export default function App() {
     <div className="app">
       <header className="topbar">
         <h1>CubeSat Simulator</h1>
+        {version && <span className="app-version">v{version}</span>}
         {result && <span className="scenario-name">{result.scenario.name}</span>}
+        <UpdateBanner />
         <span className={`engine-status ${engine.status}`} role="status">
           <span className="dot" />
           {engineLabel}

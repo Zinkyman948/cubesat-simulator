@@ -1,8 +1,9 @@
 """Smoke-test a built engine sidecar the way the desktop app drives it.
 
 Starts it with a random port and a token, checks the API (including that a
-wrong token is rejected), runs the demo scenario, then closes stdin and
-expects the process to exit.
+wrong token is rejected), runs the demo scenario, then stops it with an
+"exit" line (what the app does before an update). A second launch checks
+that closing stdin (the app going away) also stops it.
 
 Usage: python scripts/test_sidecar.py <path-to-simcore-server executable>
 """
@@ -20,8 +21,7 @@ import urllib.request
 TOKEN = "sidecar-smoke-test"
 
 
-def main() -> None:
-    exe = sys.argv[1]
+def launch(exe: str) -> tuple[subprocess.Popen, int]:
     start = time.time()
     proc = subprocess.Popen(
         [exe, "serve", "--port", "0", "--exit-on-stdin-close"],
@@ -32,6 +32,12 @@ def main() -> None:
     assert line.startswith("SIMCORE_READY port="), f"unexpected first line: {line!r}"
     port = int(line.split("=", 1)[1])
     print(f"ready on port {port} after {time.time() - start:.1f} s")
+    return proc, port
+
+
+def main() -> None:
+    exe = sys.argv[1]
+    proc, port = launch(exe)
 
     def call(path: str, body: dict | None = None, token: str = TOKEN):
         req = urllib.request.Request(
@@ -58,6 +64,13 @@ def main() -> None:
     assert passes["Svalbard"] > 0, passes
     print(f"simulated in {time.time() - t:.1f} s: {passes}, {len(result['link_passes'])} link passes")
 
+    proc.stdin.write("exit\n")
+    proc.stdin.flush()
+    proc.wait(timeout=30)
+    print(f"exited with code {proc.returncode} after 'exit'")
+    assert proc.returncode == 0
+
+    proc, _ = launch(exe)
     proc.stdin.close()
     proc.wait(timeout=30)
     print(f"exited with code {proc.returncode} after stdin closed")

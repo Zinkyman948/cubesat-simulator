@@ -1,6 +1,6 @@
 [package]
 name = "cubesat-simulator"
-version = "0.1.0"
+version = "0.2.0"
 description = "High-fidelity CubeSat orbit and communications simulator"
 edition = "2021"
 license = "MIT"
@@ -16,5 +16,7 @@ tauri-build = { version = "2", features = [] }
 [dependencies]
 tauri = { version = "2", features = [] }
 tauri-plugin-shell = "2"
+tauri-plugin-updater = "2"
+tauri-plugin-process = "2"
 serde = { version = "1", features = ["derive"] }
 uuid = { version = "1", features = ["v4"] }

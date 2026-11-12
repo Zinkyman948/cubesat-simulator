@@ -5,7 +5,11 @@
 //! Every request must carry the random per-launch token we pass it in the
 //! SIMCORE_TOKEN environment variable, so other local processes can't use it.
 
-use std::sync::Mutex;
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Mutex,
+};
+use std::time::Duration;
 
 use serde::Serialize;
 use tauri::{AppHandle, Manager, RunEvent, State};
@@ -30,6 +34,7 @@ struct EngineState {
     /// Held for the app's lifetime: dropping it closes the engine's stdin,
     /// which the engine treats as a signal to exit.
     child: Mutex<Option<CommandChild>>,
+    terminated: AtomicBool,
 }
 
 /// `Ok(None)` while the engine is still starting.
@@ -39,6 +44,24 @@ fn engine_info(state: State<EngineState>) -> Result<Option<EngineInfo>, String> 
         return Err(err);
     }
     Ok(state.info.lock().unwrap().clone())
+}
+
+/// Stop the engine and wait for it to exit, so an update can replace its
+/// executable. Asks it to exit via stdin first: on Windows, killing the
+/// PyInstaller launcher alone would leave the Python process running.
+#[tauri::command]
+async fn stop_engine(state: State<'_, EngineState>) -> Result<(), String> {
+    let Some(mut child) = state.child.lock().unwrap().take() else {
+        return Ok(());
+    };
+    let _ = child.write(b"exit\n");
+    for _ in 0..100 {
+        if state.terminated.load(Ordering::SeqCst) {
+            return Ok(());
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    child.kill().map_err(|e| e.to_string())
 }
 
 fn start_engine(app: &AppHandle) -> Result<(), String> {
@@ -89,6 +112,7 @@ fn start_engine(app: &AppHandle) -> Result<(), String> {
                     }
                 }
                 CommandEvent::Terminated(status) => {
+                    state.terminated.store(true, Ordering::SeqCst);
                     *state.info.lock().unwrap() = None;
                     *state.error.lock().unwrap() = Some(format!(
                         "The simulation engine stopped unexpectedly (exit code {:?}).\n{}",
@@ -106,8 +130,10 @@ fn start_engine(app: &AppHandle) -> Result<(), String> {
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
         .manage(EngineState::default())
-        .invoke_handler(tauri::generate_handler![engine_info])
+        .invoke_handler(tauri::generate_handler![engine_info, stop_engine])
         .setup(|app| {
             if let Err(e) = start_engine(app.handle()) {
                 *app.state::<EngineState>().error.lock().unwrap() =

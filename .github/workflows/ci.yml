@@ -96,9 +96,11 @@ jobs:
         working-directory: app
         run: npm ci
 
+      # Test builds are unsigned: update signing needs secrets that only the
+      # release workflow (and not pull requests from forks) has.
       - name: Build desktop app
         working-directory: app
-        run: npx tauri build
+        run: npx tauri build --config src-tauri/tauri.ci.conf.json
 
       - uses: actions/upload-artifact@v7
         with:

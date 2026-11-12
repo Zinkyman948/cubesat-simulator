@@ -15,9 +15,10 @@ Tauri (Rust) ──spawns──▶ simcore-server sidecar (PyInstaller build of 
 
 ## Just want to run it?
 
-Download the Windows installer from the latest successful
-[CI run](https://github.com/Zinkyman948/cubesat-simulator/actions) (artifact
-**CubeSat-Simulator-Windows-installer**). No developer tools are needed.
+Download the installer from the
+[latest release](https://github.com/Zinkyman948/cubesat-simulator/releases/latest).
+No developer tools are needed. Every CI run also uploads an unsigned test
+installer as the **CubeSat-Simulator-Windows-installer** artifact.
 
 ## Option A: browser mode (Python + Node only)
 
@@ -51,3 +52,40 @@ npx tauri build                                  # installer in src-tauri\target
 
 To skip rebuilding the sidecar while iterating on engine code in a debug build,
 run `simcore serve` yourself and start the app with `$env:SIMCORE_DEV_PORT=8765`.
+
+## Releasing a new version
+
+```powershell
+.venv\Scripts\python scripts\release.py bump 0.3.0   # app, Rust crate and engine versions
+# add a "## 0.3.0 - <date>" section to CHANGELOG.md (it becomes the release notes)
+git commit -am "Release 0.3.0"
+git tag v0.3.0
+git push; git push origin v0.3.0
+```
+
+The **Release** workflow checks that the tag, versions and changelog agree, runs
+the engine tests, builds and smoke-tests the engine sidecar, then builds the
+installer, signs the update with the `TAURI_SIGNING_PRIVATE_KEY` /
+`TAURI_SIGNING_PRIVATE_KEY_PASSWORD` repository secrets, and publishes a GitHub
+Release including `latest.json`. Installed apps read that file at startup and
+offer the update; before installing, the app stops the engine so the installer
+can replace it.
+
+The signing key lives outside the repository. **If it is lost, installed copies
+can no longer be updated** (users would have to reinstall manually), so keep a
+backup.
+
+## Security
+
+- The engine listens only on `127.0.0.1`, on a random port, and rejects any
+  request without the random token generated at each launch.
+- The frontend has no shell or filesystem access: the engine sidecar is
+  started and stopped from Rust.
+- Content Security Policy (`src-tauri/tauri.conf.json`): scripts load only from
+  the app itself (no remote or inline scripts), and network access is limited
+  to the app and the local engine. `'unsafe-eval'` is required because Cesium's
+  widgets use Knockout.js, which evaluates code from strings when Cesium is
+  imported. `vite preview` serves the build with the same policy, so violations
+  show up when testing in a browser.
+- Updates are signed: the app installs an update only if its signature matches
+  the public key in `tauri.conf.json`.

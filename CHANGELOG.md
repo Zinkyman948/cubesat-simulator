@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.1 - 2026-11-12
+
+- First update delivered through the in-app updater.
+- Automated end-to-end tests: every change is now checked in a real browser
+  against the engine (scenario loading, globe and charts, live form
+  validation, editing and running scenarios, drafts, TLE scenarios).
+
 ## 0.2.0 - 2026-11-12
 
 First public release.

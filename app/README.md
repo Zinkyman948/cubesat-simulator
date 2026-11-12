@@ -53,6 +53,19 @@ npx tauri build                                  # installer in src-tauri\target
 To skip rebuilding the sidecar while iterating on engine code in a debug build,
 run `simcore serve` yourself and start the app with `$env:SIMCORE_DEV_PORT=8765`.
 
+## End-to-end tests
+
+Browser tests in `e2e/` drive the built frontend (served with the app's
+Content Security Policy) against a real engine. CI runs them on every push.
+
+```powershell
+.venv\Scripts\Activate.ps1          # so `simcore` is on PATH
+cd app
+npx playwright install chromium     # once
+npm run build
+npm run test:e2e
+```
+
 ## Releasing a new version
 
 ```powershell

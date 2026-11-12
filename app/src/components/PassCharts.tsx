@@ -1,7 +1,46 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
+import { load, save } from "../storage";
 import { seriesColor, useThemeVersion } from "../theme";
-import type { PassRef, SimulationResult } from "../types";
+import type { LinkPass, PassRef, SimulationResult } from "../types";
 import LineChart, { type Series } from "./LineChart";
+
+// Choices for the second chart. "range" is pass geometry (one line); the
+// others are per link.
+const METRICS = {
+  range: { label: "Slant range", unit: "km", decimals: 0, pick: null },
+  gain: {
+    label: "Spacecraft antenna gain",
+    unit: "dBi",
+    decimals: 1,
+    pick: (lp: LinkPass) => lp.series.sc_antenna_gain_dbi,
+  },
+  angle: {
+    label: "Off-boresight angle",
+    unit: "°",
+    decimals: 1,
+    pick: (lp: LinkPass) => lp.series.sc_antenna_angle_deg,
+  },
+  power: {
+    label: "Received power",
+    unit: "dBm",
+    decimals: 1,
+    pick: (lp: LinkPass) => lp.series.received_power_dbm,
+  },
+  ebn0: { label: "Eb/N0", unit: "dB", decimals: 1, pick: (lp: LinkPass) => lp.series.ebn0_db },
+  pathLoss: {
+    label: "Free-space path loss",
+    unit: "dB",
+    decimals: 1,
+    pick: (lp: LinkPass) => lp.series.path_loss_db,
+  },
+  dopplerRate: {
+    label: "Doppler rate",
+    unit: "Hz/s",
+    decimals: 1,
+    pick: (lp: LinkPass) => lp.series.doppler_rate_hz_s,
+  },
+} as const;
+type Metric = keyof typeof METRICS;
 
 interface Props {
   result: SimulationResult;
@@ -10,6 +49,14 @@ interface Props {
 
 export default function PassCharts({ result, selected }: Props) {
   const themeVersion = useThemeVersion();
+  const [metric, setMetric] = useState<Metric>(() => {
+    const stored = load("chart-metric");
+    return stored && stored in METRICS ? (stored as Metric) : "range";
+  });
+  const chooseMetric = (m: Metric) => {
+    setMetric(m);
+    save("chart-metric", m);
+  };
 
   const data = useMemo(() => {
     if (!selected) return null;
@@ -17,7 +64,7 @@ export default function PassCharts({ result, selected }: Props) {
     const linkPasses = result.link_passes.filter(
       (lp) => lp.station === selected.station && lp.pass_index === selected.index,
     );
-    if (linkPasses.length === 0) return { x: [], geometry: null, doppler: [], margin: [] };
+    if (linkPasses.length === 0) return { x: [], geometry: null, doppler: [], margin: [], second: [] };
 
     // All links share one pass geometry; use the first for the time axis.
     const base = linkPasses[0].series;
@@ -32,17 +79,16 @@ export default function PassCharts({ result, selected }: Props) {
       { label, values, color: seriesColor(0) },
     ];
 
+    const pick = METRICS[metric].pick;
     return {
       x,
-      geometry: {
-        elevation: single("Elevation", base.elevation_deg),
-        range: single("Range", base.range_km),
-      },
+      geometry: { elevation: single("Elevation", base.elevation_deg) },
+      second: pick ? perLink(pick) : single("Range", base.range_km),
       doppler: perLink((lp) => lp.series.doppler_hz.map((d) => d / 1000)),
       margin: perLink((lp) => lp.series.margin_db),
     };
     // themeVersion is a dependency so series colors are re-read after a theme switch.
-  }, [result, selected, themeVersion]);
+  }, [result, selected, metric, themeVersion]);
 
   if (!selected || !data) {
     return <div className="charts"><p className="empty">Select a pass to see its link performance.</p></div>;
@@ -75,7 +121,27 @@ export default function PassCharts({ result, selected }: Props) {
       {header}
       <div className="chart-grid">
         <LineChart title="Elevation" unit="°" decimals={1} x={data.x} series={data.geometry.elevation} syncKey={key} />
-        <LineChart title="Slant range" unit="km" decimals={0} x={data.x} series={data.geometry.range} syncKey={key} />
+        <LineChart
+          title={
+            <select
+              className="chart-select"
+              value={metric}
+              onChange={(e) => chooseMetric(e.target.value as Metric)}
+              aria-label="Second chart"
+            >
+              {Object.entries(METRICS).map(([k, m]) => (
+                <option key={k} value={k}>
+                  {m.label}
+                </option>
+              ))}
+            </select>
+          }
+          unit={METRICS[metric].unit}
+          decimals={METRICS[metric].decimals}
+          x={data.x}
+          series={data.second}
+          syncKey={key}
+        />
         <LineChart title="Doppler shift" unit="kHz" decimals={2} x={data.x} series={data.doppler} syncKey={key} />
         <LineChart title="Link margin" unit="dB" decimals={1} x={data.x} series={data.margin} threshold={0} syncKey={key} />
       </div>

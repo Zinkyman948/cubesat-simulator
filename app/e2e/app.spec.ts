@@ -78,13 +78,46 @@ test("form edits validate live, update the YAML and run", async ({ page }) => {
   // Switch the UHF link's ground antenna to a dish.
   const uhf = page.locator(".link-card").first();
   await uhf.locator("summary").click();
-  await uhf.locator(".segmented").nth(1).getByRole("radio", { name: "Parabolic dish" }).click();
+  await uhf.getByRole("radiogroup", { name: "Ground antenna" }).getByRole("radio", { name: "Parabolic dish" }).click();
   expect(await yamlText(page)).toContain("dish_diameter_m: 1");
 
   // Run the edited scenario.
   await page.getByRole("button", { name: "Run", exact: true }).click();
   await expect(page.getByRole("button", { name: "Run", exact: true })).toBeEnabled();
   await expect(page.locator("table.data tbody td:first-child", { hasText: "Boulder CO" }).first()).toBeVisible();
+  expect(errors).toEqual([]);
+});
+
+test("attitude and antenna patterns drive the spacecraft antenna gain", async ({ page }) => {
+  const errors = trackErrors(page);
+  await openApp(page);
+
+  // Track the ground station instead of pointing at nadir.
+  await page.getByLabel("Attitude").selectOption("target");
+  await expect(page.getByText("+Z at the highest visible ground station")).toBeVisible();
+
+  // S-band: swap the patch for a 0.3 m dish on the nadir face.
+  const sband = page.locator(".link-card").nth(1);
+  await sband.locator("summary").click();
+  await sband.getByLabel("Spacecraft antenna").selectOption("dish");
+  // The first dish field is the spacecraft's (transmitter); the second is the ground station's.
+  await sband.getByRole("textbox", { name: "Dish diameter" }).first().fill("0.3");
+
+  const yaml = await yamlText(page);
+  expect(yaml).toMatch(/attitude:\n\s+mode: target/);
+  expect(yaml).toContain("pattern: dish");
+  await expect(page.locator(".issue-count")).toBeHidden();
+
+  await page.getByRole("button", { name: "Run", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Run", exact: true })).toBeEnabled();
+
+  // With target pointing the station sits on boresight, so the 0.3 m dish
+  // runs at its 14.4 dBi peak, 10 log10(0.55 (pi 0.3 / 0.1335 m)^2).
+  await page.getByLabel("Second chart").selectOption("gain");
+  await page.locator("table.data tbody tr").first().click();
+  const chart = page.locator(".chart").nth(1);
+  await chart.locator(".u-over").hover({ position: { x: 150, y: 40 } });
+  await expect(chart.locator(".u-legend")).toContainText(/S-band payload\s*14\.4 dBi/);
   expect(errors).toEqual([]);
 });
 

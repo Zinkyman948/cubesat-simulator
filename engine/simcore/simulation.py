@@ -8,6 +8,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
+from simcore.attitude import AttitudeModel, gcrs_axes_to_itrs
 from simcore.frames import ecef_to_geodetic, gcrs_to_itrs
 from simcore.link.analysis import LinkPass, analyze_pass
 from simcore.link.budget import LinkModel
@@ -28,8 +29,11 @@ class Ephemeris:
     latitude_deg: np.ndarray
     longitude_deg: np.ndarray
     altitude_km: np.ndarray
+    # Spacecraft body axes in the Earth-fixed frame, (3, 3, N): columns X, Y, Z.
+    body_axes_itrs: np.ndarray
 
     def to_dict(self) -> dict:
+        axes = self.body_axes_itrs
         return {
             "seconds": self.seconds.tolist(),
             "utc": self.utc,
@@ -38,6 +42,9 @@ class Ephemeris:
             "latitude_deg": self.latitude_deg.tolist(),
             "longitude_deg": self.longitude_deg.tolist(),
             "altitude_km": self.altitude_km.tolist(),
+            "body_x_itrs": axes[:, 0, :].T.tolist(),
+            "body_y_itrs": axes[:, 1, :].T.tolist(),
+            "body_z_itrs": axes[:, 2, :].T.tolist(),
         }
 
 
@@ -88,7 +95,21 @@ def build_propagator(scenario: Scenario) -> Propagator:
     )
 
 
-def compute_ephemeris(scenario: Scenario, propagator: Propagator) -> Ephemeris:
+def build_stations(scenario: Scenario) -> dict[str, GroundStation]:
+    return {cfg.name: GroundStation(**cfg.model_dump()) for cfg in scenario.ground_stations}
+
+
+def build_attitude(scenario: Scenario, stations: dict[str, GroundStation]) -> AttitudeModel:
+    return AttitudeModel(
+        scenario.spacecraft.attitude,
+        list(stations.values()),
+        from_datetime(scenario.simulation.start),
+    )
+
+
+def compute_ephemeris(
+    scenario: Scenario, propagator: Propagator, attitude: AttitudeModel | None = None
+) -> Ephemeris:
     sim = scenario.simulation
     start = from_datetime(sim.start)
     total = float(seconds_between(start, from_datetime(sim.end)))
@@ -97,6 +118,7 @@ def compute_ephemeris(scenario: Scenario, propagator: Propagator) -> Ephemeris:
     r, v = propagator.state(times)
     r_ecef, _ = gcrs_to_itrs(times, r, v)
     lat, lon, alt = ecef_to_geodetic(r_ecef)
+    attitude = attitude or build_attitude(scenario, build_stations(scenario))
     return Ephemeris(
         seconds=seconds,
         utc=[t.isoformat() for t in times.utc_datetime()],
@@ -105,6 +127,7 @@ def compute_ephemeris(scenario: Scenario, propagator: Propagator) -> Ephemeris:
         latitude_deg=np.degrees(lat),
         longitude_deg=np.degrees(lon),
         altitude_km=alt,
+        body_axes_itrs=gcrs_axes_to_itrs(times, attitude.axes(times, r, v)),
     )
 
 
@@ -113,9 +136,10 @@ def run(scenario: Scenario) -> SimulationResult:
     start = from_datetime(sim.start)
     end = from_datetime(sim.end)
     propagator = build_propagator(scenario)
-    ephemeris = compute_ephemeris(scenario, propagator)
+    stations = build_stations(scenario)
+    attitude = build_attitude(scenario, stations)
+    ephemeris = compute_ephemeris(scenario, propagator, attitude)
 
-    stations = {cfg.name: GroundStation(**cfg.model_dump()) for cfg in scenario.ground_stations}
     passes = {
         name: find_passes(propagator, station, start, end, sim.step_seconds)
         for name, station in stations.items()
@@ -127,7 +151,9 @@ def run(scenario: Scenario) -> SimulationResult:
         for cfg in scenario.link_stations(link):
             for k, p in enumerate(passes[cfg.name]):
                 link_passes.append(
-                    analyze_pass(model, propagator, stations[cfg.name], start, p, k, sim.link_step_seconds)
+                    analyze_pass(
+                        model, propagator, attitude, stations[cfg.name], start, p, k, sim.link_step_seconds
+                    )
                 )
 
     return SimulationResult(scenario=scenario, ephemeris=ephemeris, passes=passes, link_passes=link_passes)

@@ -58,5 +58,31 @@ margin    = Eb/N0 - (Eb/N0_required,uncoded(BER) - coding gain)
   derivative of the sampled Doppler.
 - **Data volume**: data rate multiplied by the time with margin >= 0,
   interpolating the crossings.
-- Antenna gains are fixed values or computed dish peak gains (no patterns
-  or attitude yet).
+- Spacecraft antenna gain comes from the antenna pattern and the attitude
+  (see below); ground antennas are assumed to track and use their peak gain.
+
+## Attitude and antenna patterns
+
+`spacecraft.attitude.mode` sets the body frame (default `nadir`):
+
+| Mode | +Z | +X |
+|---|---|---|
+| `nadir` | toward Earth's center | along the velocity (LVLH) |
+| `target` | at the highest visible ground station; nadir otherwise | toward the velocity |
+| `sun` | toward the Sun | toward the orbit normal |
+| `inertial` | fixed `pointing` direction (GCRS) | toward GCRS +X |
+| `spin` | fixed `spin_axis` (GCRS), rotating at `spin_rate_deg_s` | rotates about +Z |
+
+Spacecraft antennas have a `pattern` mounted along a body `axis` (default `[0, 0, 1]`):
+
+| Pattern | Gain |
+|---|---|
+| `isotropic` | `gain_dbi` everywhere (the default when only `gain_dbi` is given) |
+| `cosine` | patch: `gain_dbi` peak, G0 cos^n(theta) with G0 = 2(n + 1); -10 dBi back lobe |
+| `turnstile` | crossed dipoles: 1.76 dBi on the axis, -1.25 dBi broadside |
+| `dipole` | half-wave dipole with its element along the axis: 2.15 dBi broadside, -20 dBi nulls |
+| `dish` | uniform circular aperture, [2 J1(x)/x]^2, peak from diameter and efficiency |
+
+At every link sample the line of sight to the station is expressed in the
+body frame, and the pattern gives the gain at that off-boresight angle. The
+Sun direction uses the Astronomical Almanac's low-precision formula (~0.01 deg).

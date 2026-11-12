@@ -31,6 +31,13 @@ const SATELLITE = Color.fromCssColorString("#f0efec");
 const STATION = Color.fromCssColorString("#eda100");
 const CONTACT = Color.fromCssColorString("#0ca30c");
 const LABEL_FONT = "12px system-ui, sans-serif";
+// Spacecraft body axes drawn from the satellite (conventional X/Y/Z = red/green/blue).
+const AXIS_LENGTH_M = 600e3;
+const AXIS_COLORS = {
+  x: Color.fromCssColorString("#e34948"),
+  y: Color.fromCssColorString("#1baf7a"),
+  z: Color.fromCssColorString("#3987e5"),
+};
 
 function orbitPeriodSeconds(result: SimulationResult): number {
   // Mean altitude is enough to size the trail to about one revolution.
@@ -63,11 +70,24 @@ function buildScene(viewer: Viewer, result: SimulationResult) {
       interpolationAlgorithm: LagrangePolynomialApproximation,
     });
   }
+  const axisTips = {
+    x: new SampledPositionProperty(),
+    y: new SampledPositionProperty(),
+    z: new SampledPositionProperty(),
+  };
+  const axisData = { x: eph.body_x_itrs, y: eph.body_y_itrs, z: eph.body_z_itrs };
   times.forEach((t, i) => {
     const lon = eph.longitude_deg[i];
     const lat = eph.latitude_deg[i];
-    position.addSample(t, Cartesian3.fromDegrees(lon, lat, eph.altitude_km[i] * 1000));
+    const pos = Cartesian3.fromDegrees(lon, lat, eph.altitude_km[i] * 1000);
+    position.addSample(t, pos);
     nadir.addSample(t, Cartesian3.fromDegrees(lon, lat, 0));
+    for (const key of ["x", "y", "z"] as const) {
+      const [ax, ay, az] = axisData[key][i];
+      const tip = new Cartesian3(ax, ay, az);
+      Cartesian3.multiplyByScalar(tip, AXIS_LENGTH_M, tip);
+      axisTips[key].addSample(t, Cartesian3.add(pos, tip, tip));
+    }
   });
 
   const period = orbitPeriodSeconds(result);
@@ -94,6 +114,30 @@ function buildScene(viewer: Viewer, result: SimulationResult) {
       resolution: 60,
     },
   });
+
+  for (const key of ["x", "y", "z"] as const) {
+    viewer.entities.add({
+      id: `axis:${key}`,
+      polyline: {
+        positions: new PositionPropertyArray([position, axisTips[key]]),
+        width: 2,
+        arcType: ArcType.NONE,
+        material: AXIS_COLORS[key],
+      },
+    });
+    viewer.entities.add({
+      id: `axis-label:${key}`,
+      position: axisTips[key],
+      label: {
+        text: `+${key.toUpperCase()}`,
+        font: "11px system-ui, sans-serif",
+        style: LabelStyle.FILL_AND_OUTLINE,
+        outlineWidth: 3,
+        outlineColor: Color.BLACK,
+        pixelOffset: new Cartesian2(0, -8),
+      },
+    });
+  }
 
   // Sub-satellite point: its path is the ground track for the next/last orbit.
   viewer.entities.add({

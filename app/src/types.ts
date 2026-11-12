@@ -36,6 +36,8 @@ export interface LinkSeries {
   ebn0_db: number[];
   margin_db: number[];
   ber: number[];
+  sc_antenna_gain_dbi: number[];
+  sc_antenna_angle_deg: number[];
 }
 
 export interface LinkPass {
@@ -83,6 +85,10 @@ export interface Ephemeris {
   latitude_deg: number[];
   longitude_deg: number[];
   altitude_km: number[];
+  /** Spacecraft body axes as Earth-fixed unit vectors, one [x, y, z] per sample. */
+  body_x_itrs: number[][];
+  body_y_itrs: number[][];
+  body_z_itrs: number[][];
 }
 
 export interface SimulationResult {

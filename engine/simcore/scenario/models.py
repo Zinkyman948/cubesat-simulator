@@ -89,10 +89,50 @@ class TLEOrbit(_Model):
 Orbit = Annotated[Union[KeplerianOrbit, TLEOrbit], Field(discriminator="type")]
 
 
+Vector3 = tuple[float, float, float]
+
+
+def _check_direction(v: Vector3 | None, what: str) -> None:
+    if v is not None and sum(c * c for c in v) < 1e-12:
+        raise ValueError(f"{what} must be a non-zero vector")
+
+
+class Attitude(_Model):
+    """How the spacecraft body frame is oriented.
+
+    - nadir: +Z toward Earth's center, +X along the velocity, +Y opposite the
+      orbit normal (the usual LVLH frame).
+    - sun: +Z toward the Sun, +X as close as possible to the orbit normal.
+    - inertial: +Z fixed along `pointing` (GCRS), +X as close as possible to GCRS +X.
+    - spin: +Z fixed along `spin_axis` (GCRS), spinning about it at
+      `spin_rate_deg_s` (starting from the inertial orientation at the
+      simulation start).
+    - target: +Z toward the highest ground station that is above its
+      elevation mask, +X as close as possible to the velocity; nadir when
+      no station is visible.
+    """
+
+    mode: Literal["nadir", "sun", "inertial", "spin", "target"] = "nadir"
+    pointing: Vector3 | None = None
+    spin_axis: Vector3 | None = None
+    spin_rate_deg_s: float | None = None
+
+    @model_validator(mode="after")
+    def _check_mode(self):
+        if self.mode == "inertial" and self.pointing is None:
+            raise ValueError("inertial attitude needs pointing: [x, y, z]")
+        if self.mode == "spin" and (self.spin_axis is None or self.spin_rate_deg_s is None):
+            raise ValueError("spin attitude needs spin_axis: [x, y, z] and spin_rate_deg_s")
+        _check_direction(self.pointing, "pointing")
+        _check_direction(self.spin_axis, "spin_axis")
+        return self
+
+
 class Spacecraft(_Model):
     name: str
     form_factor: Literal["1U", "1.5U", "2U", "3U", "6U", "12U", "16U"] = "3U"
     mass_kg: float = Field(default=4.0, gt=0)
+    attitude: Attitude = Attitude()
 
 
 class GroundStationConfig(_Model):
@@ -103,17 +143,50 @@ class GroundStationConfig(_Model):
     min_elevation_deg: float = Field(default=10.0, ge=0.0, lt=90.0)
 
 
-class Antenna(_Model):
-    """Either a fixed peak gain, or a circular dish whose gain is computed."""
+# 10 log10(2): the peak of a cos^0 (hemispherical) pattern, the broadest patch.
+MIN_COSINE_GAIN_DBI = 3.0103
 
+
+class Antenna(_Model):
+    """An antenna and its radiation pattern.
+
+    Patterns (`pattern`, inferred when omitted: dish if a diameter is given,
+    otherwise isotropic):
+    - isotropic: `gain_dbi` in every direction.
+    - cosine: patch-like, peak `gain_dbi` along `axis`, falling as cos^n.
+    - turnstile: crossed dipoles, 1.76 dBi along `axis`, -1.25 dBi broadside.
+    - dipole: half-wave dipole with its element along `axis`; 2.15 dBi peak.
+    - dish: circular aperture of `dish_diameter_m`, peak along `axis`.
+
+    `axis` is a direction in the spacecraft body frame. Ground antennas are
+    assumed to track the spacecraft, so only their peak gain matters.
+    """
+
+    pattern: Literal["isotropic", "cosine", "turnstile", "dipole", "dish"] | None = None
     gain_dbi: float | None = None
     dish_diameter_m: float | None = Field(default=None, gt=0)
     dish_efficiency: float = Field(default=0.55, gt=0, le=1)
+    axis: Vector3 = (0.0, 0.0, 1.0)
 
     @model_validator(mode="after")
     def _check_kind(self):
-        if (self.gain_dbi is None) == (self.dish_diameter_m is None):
-            raise ValueError("antenna needs exactly one of gain_dbi or dish_diameter_m")
+        if self.pattern is None:
+            self.pattern = "dish" if self.dish_diameter_m is not None else "isotropic"
+        needs_gain = self.pattern in ("isotropic", "cosine")
+        if needs_gain != (self.gain_dbi is not None):
+            raise ValueError(
+                f"{self.pattern} antenna "
+                + ("needs gain_dbi" if needs_gain else "has a fixed gain; remove gain_dbi")
+            )
+        if (self.pattern == "dish") != (self.dish_diameter_m is not None):
+            raise ValueError(
+                "dish antenna needs dish_diameter_m"
+                if self.pattern == "dish"
+                else f"dish_diameter_m only applies to dish antennas, not {self.pattern}"
+            )
+        if self.pattern == "cosine" and self.gain_dbi < MIN_COSINE_GAIN_DBI:
+            raise ValueError(f"cosine (patch) gain must be at least {MIN_COSINE_GAIN_DBI} dBi")
+        _check_direction(self.axis, "axis")
         return self
 
 
@@ -189,6 +262,10 @@ class LinkConfig(_Model):
     @property
     def frequency_hz(self) -> float:
         return self.frequency_mhz * 1e6
+
+    @property
+    def spacecraft_antenna(self) -> Antenna:
+        return self.transmitter.antenna if self.direction == "downlink" else self.receiver.antenna
 
 
 class SimulationConfig(_Model):

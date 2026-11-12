@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+- Spacecraft attitude: nadir, ground-station tracking, Sun-pointing,
+  inertial and spinning modes. The body axes are drawn on the globe.
+- Antenna patterns for the spacecraft: patch (cosine), turnstile, dipole and
+  dish, mounted along any body axis. Link budgets now use the actual gain
+  toward the ground station at every moment of a pass.
+- The second pass chart can show spacecraft antenna gain, off-boresight
+  angle, received power, Eb/N0, path loss or Doppler rate.
+- Multi-link chart readouts now show a value for every link.
+- The demo scenario uses realistic antennas (turnstile, patch, monopole).
+
 ## 0.2.1 - 2026-11-12
 
 - First update delivered through the in-app updater.

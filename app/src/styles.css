@@ -635,6 +635,17 @@ button:disabled {
   color: var(--text-secondary);
 }
 
+.vector {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.vector .field label {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
 .checks {
   display: flex;
   flex-wrap: wrap;
@@ -816,6 +827,18 @@ table.data tbody tr.selected {
   color: var(--text-secondary);
 }
 
+.chart-select {
+  height: 22px;
+  padding: 0 4px;
+  margin: -3px 0 -2px -4px;
+  border: none;
+  background: transparent;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
 .chart .plot {
   flex: 1;
   min-height: 0;
@@ -840,6 +863,12 @@ table.data tbody tr.selected {
   color: var(--text-secondary);
   text-align: left;
   margin-top: 2px;
+}
+
+/* Multi-link charts drop the time from their readout to keep one value per
+   link visible; the cursor time is shared with the single-line charts. */
+.chart.multi .u-legend .u-series:first-child {
+  display: none;
 }
 
 .u-legend .u-value {

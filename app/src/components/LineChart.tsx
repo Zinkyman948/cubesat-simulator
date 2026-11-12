@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 import uPlot from "uplot";
 import "uplot/dist/uPlot.min.css";
 import { cssVar, useThemeVersion } from "../theme";
@@ -10,7 +10,7 @@ export interface Series {
 }
 
 interface Props {
-  title: string;
+  title: ReactNode;
   unit: string;
   decimals: number;
   x: number[]; // unix seconds
@@ -118,6 +118,9 @@ export default function LineChart({ title, unit, decimals, x, series, threshold,
     fit();
     const resize = new ResizeObserver(fit);
     resize.observe(el);
+    // The readout re-wraps as values change while hovering.
+    const legend = plot.root.querySelector(".u-legend");
+    if (legend) resize.observe(legend);
     return () => {
       resize.disconnect();
       plot.destroy();
@@ -125,7 +128,7 @@ export default function LineChart({ title, unit, decimals, x, series, threshold,
   }, [x, series, unit, decimals, threshold, syncKey, themeVersion]);
 
   return (
-    <div className="chart">
+    <div className={series.length > 1 ? "chart multi" : "chart"}>
       <h3>{title}</h3>
       <div className="plot" ref={host} />
     </div>

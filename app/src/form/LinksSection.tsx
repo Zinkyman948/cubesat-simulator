@@ -1,6 +1,7 @@
 import { isSeq } from "yaml";
 import type { GroundStationConfig } from "../types";
 import { getIn, type Path } from "./doc";
+import { setVector } from "./AttitudeFields";
 import { NumberField, Section, Segmented, SelectField, TextField, useForm } from "./fields";
 
 const MODULATIONS = [
@@ -22,7 +23,7 @@ const TEMPLATES: Record<string, { label: string; link: Record<string, unknown> }
       frequency_mhz: 437.5,
       data_rate_bps: 9600,
       modulation: "gmsk",
-      transmitter: { power_w: 1.0, line_loss_db: 0.5, antenna: { gain_dbi: 0.0 } },
+      transmitter: { power_w: 1.0, line_loss_db: 0.5, antenna: { pattern: "turnstile", axis: [0, 0, 1] } },
       receiver: {
         antenna: { gain_dbi: 14.0 },
         antenna_noise_temp_k: 500,
@@ -41,14 +42,14 @@ const TEMPLATES: Record<string, { label: string; link: Record<string, unknown> }
       data_rate_bps: 5000000,
       modulation: "qpsk",
       coding: { gain_db: 5.0, rate: 0.5 },
-      transmitter: { power_w: 2.0, line_loss_db: 1.0, antenna: { gain_dbi: 6.0 } },
+      transmitter: { power_w: 2.0, line_loss_db: 1.0, antenna: { pattern: "cosine", gain_dbi: 6.0, axis: [0, 0, 1] } },
       receiver: {
         antenna: { dish_diameter_m: 3.7, dish_efficiency: 0.55 },
         antenna_noise_temp_k: 80,
         noise_figure_db: 0.8,
         line_loss_db: 0.3,
       },
-      losses: { polarization_db: 0.5, pointing_db: 3.0, implementation_db: 2.0, atmospheric_zenith_db: 0.05 },
+      losses: { polarization_db: 0.5, pointing_db: 0.5, implementation_db: 2.0, atmospheric_zenith_db: 0.05 },
     },
   },
   vhf: {
@@ -61,7 +62,7 @@ const TEMPLATES: Record<string, { label: string; link: Record<string, unknown> }
       modulation: "bfsk_noncoherent",
       transmitter: { power_w: 50.0, line_loss_db: 2.0, antenna: { gain_dbi: 12.0 } },
       receiver: {
-        antenna: { gain_dbi: 0.0 },
+        antenna: { pattern: "dipole", axis: [0, 1, 0] },
         antenna_noise_temp_k: 1000,
         noise_figure_db: 2.0,
         line_loss_db: 0.5,
@@ -71,7 +72,25 @@ const TEMPLATES: Record<string, { label: string; link: Record<string, unknown> }
   },
 };
 
-function AntennaFields({ path, side }: { path: Path; side: string }) {
+const PATTERNS = [
+  { value: "isotropic", label: "Isotropic" },
+  { value: "cosine", label: "Patch (cosine)" },
+  { value: "turnstile", label: "Turnstile (crossed dipoles)" },
+  { value: "dipole", label: "Dipole / monopole" },
+  { value: "dish", label: "Dish" },
+];
+
+const AXES: { value: string; label: string; vector: number[] }[] = [
+  { value: "+z", label: "+Z (nadir face)", vector: [0, 0, 1] },
+  { value: "-z", label: "-Z (zenith face)", vector: [0, 0, -1] },
+  { value: "+x", label: "+X (along-track)", vector: [1, 0, 0] },
+  { value: "-x", label: "-X", vector: [-1, 0, 0] },
+  { value: "+y", label: "+Y", vector: [0, 1, 0] },
+  { value: "-y", label: "-Y", vector: [0, -1, 0] },
+];
+
+/** Ground antennas track the spacecraft, so only their peak gain matters. */
+function GroundAntennaFields({ path, side }: { path: Path; side: string }) {
   const { data, edit } = useForm();
   const isDish = typeof getIn(data, [...path, "dish_diameter_m"]) === "number";
   return (
@@ -85,13 +104,13 @@ function AntennaFields({ path, side }: { path: Path; side: string }) {
         ]}
         onChange={(mode) =>
           edit((doc) => {
+            for (const k of ["pattern", "axis", "gain_dbi", "dish_diameter_m", "dish_efficiency"]) {
+              doc.deleteIn([...path, k]);
+            }
             if (mode === "dish") {
-              doc.deleteIn([...path, "gain_dbi"]);
               doc.setIn([...path, "dish_diameter_m"], 1.0);
               doc.setIn([...path, "dish_efficiency"], 0.55);
             } else {
-              doc.deleteIn([...path, "dish_diameter_m"]);
-              doc.deleteIn([...path, "dish_efficiency"]);
               doc.setIn([...path, "gain_dbi"], 0.0);
             }
           })
@@ -104,6 +123,104 @@ function AntennaFields({ path, side }: { path: Path; side: string }) {
         </>
       ) : (
         <NumberField path={[...path, "gain_dbi"]} label="Antenna gain" unit="dBi" />
+      )}
+    </>
+  );
+}
+
+/** Spacecraft antennas: a radiation pattern mounted along a body axis. */
+function SpacecraftAntennaFields({ path }: { path: Path }) {
+  const { data, edit } = useForm();
+  const antenna = (getIn(data, path) ?? {}) as Record<string, unknown>;
+  const pattern =
+    typeof antenna.pattern === "string"
+      ? antenna.pattern
+      : typeof antenna.dish_diameter_m === "number"
+        ? "dish"
+        : "isotropic";
+  const axis = Array.isArray(antenna.axis) ? (antenna.axis as number[]) : [0, 0, 1];
+  const axisKey = AXES.find((a) => a.vector.every((c, i) => c === axis[i]))?.value ?? "custom";
+
+  const setPattern = (next: string) =>
+    edit((doc) => {
+      doc.setIn([...path, "pattern"], next);
+      if (next !== "dish") {
+        doc.deleteIn([...path, "dish_diameter_m"]);
+        doc.deleteIn([...path, "dish_efficiency"]);
+      }
+      if (next === "isotropic" || next === "cosine") {
+        const gain = typeof antenna.gain_dbi === "number" ? antenna.gain_dbi : null;
+        if (next === "cosine" && (gain === null || gain < 3.0103)) doc.setIn([...path, "gain_dbi"], 6.0);
+        if (next === "isotropic" && gain === null) doc.setIn([...path, "gain_dbi"], 0.0);
+      } else {
+        doc.deleteIn([...path, "gain_dbi"]);
+      }
+      if (next === "dish") {
+        doc.setIn([...path, "dish_diameter_m"], 0.5);
+        doc.setIn([...path, "dish_efficiency"], 0.55);
+      }
+    });
+
+  return (
+    <>
+      <div className="field">
+        <label htmlFor={`${path.join("-")}-pattern`}>Spacecraft antenna</label>
+        <div className="control">
+          <select id={`${path.join("-")}-pattern`} value={pattern} onChange={(e) => setPattern(e.target.value)}>
+            {PATTERNS.map((p) => (
+              <option key={p.value} value={p.value}>
+                {p.label}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+      {pattern !== "isotropic" && (
+        <div className="field">
+          <label htmlFor={`${path.join("-")}-axis`}>{pattern === "dipole" ? "Element along" : "Boresight"}</label>
+          <div className="control">
+            <select
+              id={`${path.join("-")}-axis`}
+              value={axisKey}
+              onChange={(e) => {
+                const choice = AXES.find((a) => a.value === e.target.value);
+                if (choice) edit((doc) => setVector(doc, [...path, "axis"], choice.vector));
+              }}
+            >
+              {AXES.map((a) => (
+                <option key={a.value} value={a.value}>
+                  {a.label}
+                </option>
+              ))}
+              {axisKey === "custom" && (
+                <option value="custom" disabled>
+                  [{axis.join(", ")}] (from YAML)
+                </option>
+              )}
+            </select>
+          </div>
+        </div>
+      )}
+      {(pattern === "isotropic" || pattern === "cosine") && (
+        <NumberField
+          path={[...path, "gain_dbi"]}
+          label={pattern === "cosine" ? "Peak gain" : "Antenna gain"}
+          unit="dBi"
+          hint={pattern === "cosine" ? "At least 3.01 dBi; sets the beam width" : undefined}
+        />
+      )}
+      {pattern === "dish" && (
+        <>
+          <NumberField path={[...path, "dish_diameter_m"]} label="Dish diameter" unit="m" />
+          <NumberField path={[...path, "dish_efficiency"]} label="Aperture efficiency" optional placeholder="0.55" />
+        </>
+      )}
+      {(pattern === "turnstile" || pattern === "dipole") && (
+        <span className="field-hint wide">
+          {pattern === "turnstile"
+            ? "1.76 dBi along the boresight, -1.25 dBi sideways."
+            : "2.15 dBi broadside, nulls along the element."}
+        </span>
       )}
     </>
   );
@@ -238,10 +355,18 @@ function LinkCard({ index, stations }: { index: number; stations: GroundStationC
         <h4 className="wide">Transmitter ({txSide.toLowerCase()})</h4>
         <NumberField path={[...base, "transmitter", "power_w"]} label="Power" unit="W" />
         <NumberField path={[...base, "transmitter", "line_loss_db"]} label="Line loss" unit="dB" optional placeholder="0" />
-        <AntennaFields path={[...base, "transmitter", "antenna"]} side={txSide} />
+        {downlink ? (
+          <SpacecraftAntennaFields path={[...base, "transmitter", "antenna"]} />
+        ) : (
+          <GroundAntennaFields path={[...base, "transmitter", "antenna"]} side={txSide} />
+        )}
 
         <h4 className="wide">Receiver ({rxSide.toLowerCase()})</h4>
-        <AntennaFields path={[...base, "receiver", "antenna"]} side={rxSide} />
+        {downlink ? (
+          <GroundAntennaFields path={[...base, "receiver", "antenna"]} side={rxSide} />
+        ) : (
+          <SpacecraftAntennaFields path={[...base, "receiver", "antenna"]} />
+        )}
         <ReceiverNoise path={[...base, "receiver"]} />
 
         <h4 className="wide">Losses</h4>

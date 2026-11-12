@@ -13,6 +13,8 @@ spacecraft:
   name: DEMOSAT-1
   form_factor: 3U
   mass_kg: 4.0
+  attitude:
+    mode: nadir             # +Z toward Earth, +X along the velocity
 
 propagator: j2
 
@@ -53,7 +55,7 @@ links:
     transmitter:
       power_w: 1.0
       line_loss_db: 0.5
-      antenna: {gain_dbi: 0.0}          # deployable turnstile, roughly omni
+      antenna: {pattern: turnstile, axis: [0, 0, 1]}   # crossed dipoles on the nadir face
     receiver:
       antenna: {gain_dbi: 14.0}         # crossed Yagi
       antenna_noise_temp_k: 500         # sky + man-made noise at UHF
@@ -75,7 +77,7 @@ links:
     transmitter:
       power_w: 2.0
       line_loss_db: 1.0
-      antenna: {gain_dbi: 6.0}          # nadir patch
+      antenna: {pattern: cosine, gain_dbi: 6.0, axis: [0, 0, 1]}   # nadir patch
     receiver:
       antenna: {dish_diameter_m: 3.7, dish_efficiency: 0.55}
       antenna_noise_temp_k: 80
@@ -83,7 +85,7 @@ links:
       line_loss_db: 0.3
     losses:
       polarization_db: 0.5
-      pointing_db: 3.0                  # patch beam edge at low elevation
+      pointing_db: 0.5                  # attitude control error
       implementation_db: 2.0
       atmospheric_zenith_db: 0.05
     stations: [Svalbard, Boulder]
@@ -99,7 +101,7 @@ links:
       line_loss_db: 2.0
       antenna: {gain_dbi: 12.0}         # Yagi
     receiver:
-      antenna: {gain_dbi: 0.0}          # monopole
+      antenna: {pattern: dipole, axis: [0, 1, 0]}     # monopole along the orbit normal
       antenna_noise_temp_k: 1000        # warm Earth plus VHF man-made noise
       noise_figure_db: 2.0
       line_loss_db: 0.5

@@ -7,12 +7,15 @@ from dataclasses import dataclass
 import numpy as np
 from skyfield.timelib import Time
 
+from simcore.attitude import AttitudeModel, station_positions_gcrs
+from simcore.frames import gcrs_to_itrs
+from simcore.link.antenna import gain_dbi, unit_axis
 from simcore.link.budget import LinkModel, LinkSamples
 from simcore.link.rf import BOLTZMANN_DBW, db, slant_range_km
 from simcore.orbit.propagators import Propagator
 from simcore.timeutil import from_datetime, offset, seconds_between
 from simcore.visibility.groundstation import GroundStation
-from simcore.visibility.passes import Pass, look_angles
+from simcore.visibility.passes import Pass
 
 
 @dataclass
@@ -66,6 +69,7 @@ def time_above_zero(t: np.ndarray, y: np.ndarray) -> float:
 def analyze_pass(
     model: LinkModel,
     propagator: Propagator,
+    attitude: AttitudeModel,
     station: GroundStation,
     start: Time,
     pass_: Pass,
@@ -76,8 +80,25 @@ def analyze_pass(
     s_los = float(seconds_between(start, from_datetime(pass_.los)))
     seconds = np.append(np.arange(s_aos, s_los, step_s), s_los)
     times = offset(start, seconds)
-    angles = look_angles(propagator, station, times)
-    samples = model.evaluate(angles.range_km, angles.range_rate_km_s, angles.elevation)
+
+    r, v = propagator.state(times)
+    angles = station.look_angles(*gcrs_to_itrs(times, r, v))
+
+    # Spacecraft antenna gain: the line of sight to the station, measured
+    # from the antenna axis as mounted on the (attitude-dependent) body.
+    los = station_positions_gcrs(times, station) - r
+    los /= np.linalg.norm(los, axis=0)
+    sc_antenna = model.config.spacecraft_antenna
+    axis_gcrs = np.einsum("ijn,j->in", attitude.axes(times, r, v), unit_axis(sc_antenna))
+    cos_theta = np.clip(np.sum(axis_gcrs * los, axis=0), -1.0, 1.0)
+
+    samples = model.evaluate(
+        angles.range_km,
+        angles.range_rate_km_s,
+        angles.elevation,
+        sc_gain_dbi=gain_dbi(sc_antenna, model.config.frequency_hz, cos_theta),
+        sc_angle_deg=np.degrees(np.arccos(cos_theta)),
+    )
 
     doppler_rate = (
         np.gradient(samples.doppler_hz, seconds) if seconds.size > 1 else np.zeros_like(seconds)
@@ -102,7 +123,7 @@ def analyze_pass(
 def budget_table(
     model: LinkModel, altitude_km: float, station_alt_km: float, elevation_deg: float
 ) -> list[tuple[str, float, str]]:
-    """Classic link budget line items at a single elevation angle."""
+    """Classic link budget line items at a single elevation angle (peak antenna gains)."""
     cfg = model.config
     el = np.radians(elevation_deg)
     rng = float(slant_range_km(el, altitude_km, station_alt_km))
@@ -114,13 +135,13 @@ def budget_table(
         ("Slant range", rng, "km"),
         ("Transmit power", float(db(cfg.transmitter.power_w)), "dBW"),
         ("Transmit line loss", -cfg.transmitter.line_loss_db, "dB"),
-        ("Transmit antenna gain", model.tx_antenna_gain_dbi, "dBi"),
+        ("Transmit antenna gain (peak)", model.tx_antenna_gain_dbi, "dBi"),
         ("EIRP", model.eirp_dbw, "dBW"),
         ("Free-space path loss", -first["path_loss_db"], "dB"),
         ("Atmospheric loss", -first["atmospheric_loss_db"], "dB"),
         ("Polarization loss", -cfg.losses.polarization_db, "dB"),
         ("Pointing loss", -cfg.losses.pointing_db, "dB"),
-        ("Receive antenna gain", model.rx_antenna_gain_dbi, "dBi"),
+        ("Receive antenna gain (peak)", model.rx_antenna_gain_dbi, "dBi"),
         ("Received power", first["received_power_dbm"], "dBm"),
         ("System noise temperature", model.system_noise_temp_k, "K"),
         ("G/T", model.g_over_t_dbk, "dB/K"),

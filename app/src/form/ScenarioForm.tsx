@@ -3,6 +3,7 @@ import type { Document } from "yaml";
 import type { ValidationIssue } from "../types";
 import { editScenario, parseScenario, type Path } from "./doc";
 import { DateTimeField, FormContext, NumberField, Section, SelectField, TextField, type FormApi } from "./fields";
+import AttitudeFields from "./AttitudeFields";
 import LinksSection from "./LinksSection";
 import OrbitSection from "./OrbitSection";
 import StationsSection from "./StationsSection";
@@ -80,6 +81,7 @@ export default function ScenarioForm({ yaml, onChange, issues }: Props) {
             options={["1U", "1.5U", "2U", "3U", "6U", "12U", "16U"].map((v) => ({ value: v, label: v }))}
           />
           <NumberField path={["spacecraft", "mass_kg"]} label="Mass" unit="kg" optional placeholder="4.0" />
+          <AttitudeFields />
         </Section>
 
         <OrbitSection />

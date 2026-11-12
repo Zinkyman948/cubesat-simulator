@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "simcore"
-version = "0.2.1"
+version = "0.3.0"
 description = "High-fidelity CubeSat orbit and communications simulation engine"
 readme = "README.md"
 license = "MIT"

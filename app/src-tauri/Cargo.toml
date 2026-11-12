@@ -1,6 +1,6 @@
 [package]
 name = "cubesat-simulator"
-version = "0.2.1"
+version = "0.3.0"
 description = "High-fidelity CubeSat orbit and communications simulator"
 edition = "2021"
 license = "MIT"

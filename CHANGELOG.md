@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.3.0 - 2026-11-12
 
 - Spacecraft attitude: nadir, ground-station tracking, Sun-pointing,
   inertial and spinning modes. The body axes are drawn on the globe.

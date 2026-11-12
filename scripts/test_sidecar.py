@@ -1,9 +1,10 @@
 """Smoke-test a built engine sidecar the way the desktop app drives it.
 
 Starts it with a random port and a token, checks the API (including that a
-wrong token is rejected), runs the demo scenario, then stops it with an
-"exit" line (what the app does before an update). A second launch checks
-that closing stdin (the app going away) also stops it.
+wrong token is rejected), runs the demo scenario and a lifetime estimate,
+then terminates it (what the app does before an update). A second launch,
+from an intermediate process that then exits, checks that the engine notices
+its parent (the app) is gone and exits by itself.
 
 Usage: python scripts/test_sidecar.py <path-to-simcore-server executable>
 """
@@ -22,10 +23,43 @@ import urllib.request
 TOKEN = "sidecar-smoke-test"
 
 
+def process_alive(pid: int) -> bool:
+    if sys.platform == "win32":
+        import ctypes
+
+        kernel32 = ctypes.windll.kernel32
+        handle = kernel32.OpenProcess(0x1000, False, pid)  # PROCESS_QUERY_LIMITED_INFORMATION
+        if not handle:
+            return False
+        code = ctypes.c_ulong()
+        kernel32.GetExitCodeProcess(handle, ctypes.byref(code))
+        kernel32.CloseHandle(handle)
+        return code.value == 259  # STILL_ACTIVE
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    # A zombie (exited, not yet reaped) still "exists"; check its state.
+    try:
+        with open(f"/proc/{pid}/stat") as f:
+            return f.read().split(")")[-1].split()[0] != "Z"
+    except OSError:
+        return True
+
+
+# Run by the parent-watchdog check: start the engine, report its PID, exit.
+LAUNCHER = """
+import subprocess, sys
+p = subprocess.Popen([sys.argv[1], "serve", "--port", "0", "--exit-with-parent"],
+                     stdout=subprocess.PIPE, stdin=subprocess.DEVNULL, text=True)
+print(p.stdout.readline().strip(), p.pid, flush=True)
+"""
+
+
 def launch(exe: str) -> tuple[subprocess.Popen, int]:
     start = time.time()
     proc = subprocess.Popen(
-        [exe, "serve", "--port", "0", "--exit-on-stdin-close"],
+        [exe, "serve", "--port", "0", "--exit-with-parent"],
         stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True,
         # Stack dumps if the engine gets stuck, so CI logs show where.
         env={**os.environ, "SIMCORE_TOKEN": TOKEN, "SIMCORE_DEBUG_HANG_S": "45"},
@@ -84,17 +118,21 @@ def main() -> None:
     assert status == 200 and life["reentered"], (status, life and life.get("notes"))
     print(f"lifetime in {time.time() - t:.1f} s: re-entry after {life['lifetime_days'] / 365.25:.2f} years")
 
-    proc.stdin.write("exit\n")
-    proc.stdin.flush()
+    t = time.time()
+    proc.terminate()
     proc.wait(timeout=30)
-    print(f"exited with code {proc.returncode} after 'exit'")
-    assert proc.returncode == 0
+    print(f"stopped {time.time() - t:.1f} s after terminate")
 
-    proc, _ = launch(exe)
-    proc.stdin.close()
-    proc.wait(timeout=30)
-    print(f"exited with code {proc.returncode} after stdin closed")
-    assert proc.returncode == 0
+    # Parent watchdog: the launcher exits right after the engine is ready.
+    launcher = subprocess.run([sys.executable, "-c", LAUNCHER, exe], capture_output=True, text=True, timeout=120)
+    words = launcher.stdout.split()  # "SIMCORE_READY port=<n> <pid>"
+    assert words and words[0] == "SIMCORE_READY", launcher.stdout + launcher.stderr
+    pid = int(words[-1])
+    deadline = time.time() + 15
+    while process_alive(pid) and time.time() < deadline:
+        time.sleep(0.2)
+    assert not process_alive(pid), "engine kept running after its parent exited"
+    print("exited by itself after its parent exited")
     print("sidecar OK")
 
 

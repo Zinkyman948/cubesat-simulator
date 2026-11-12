@@ -163,7 +163,33 @@ def create_app(token: str | None = None, examples_dir: Path | None = None) -> Fa
     return app
 
 
-def serve(host: str = "127.0.0.1", port: int = 0, exit_on_stdin_close: bool = False) -> None:
+def _watch_parent() -> None:
+    """Exit when the process that started us (the desktop app) is gone.
+
+    Deliberately not done by reading stdin: on Windows a thread blocked
+    reading a pipe stalls every other operation on that handle, and native
+    code that touches stdin (e.g. the Fortran runtime under NRLMSIS when it
+    opens a file) would hang behind it.
+    """
+    if sys.platform == "win32":
+        import ctypes
+
+        SYNCHRONIZE = 0x00100000
+        kernel32 = ctypes.windll.kernel32
+        handle = kernel32.OpenProcess(SYNCHRONIZE, False, os.getppid())
+        if not handle:
+            return  # parent already gone or inaccessible; nothing to watch
+        kernel32.WaitForSingleObject(handle, 0xFFFFFFFF)  # INFINITE
+    else:
+        import time
+
+        parent = os.getppid()
+        while os.getppid() == parent:  # re-parented once the parent exits
+            time.sleep(1.0)
+    os._exit(0)
+
+
+def serve(host: str = "127.0.0.1", port: int = 0, exit_with_parent: bool = False) -> None:
     """Run the API, announcing the bound port on stdout once listening."""
     import socket
     import threading
@@ -194,17 +220,8 @@ def serve(host: str = "127.0.0.1", port: int = 0, exit_on_stdin_close: bool = Fa
     sock.listen(128)  # accept (queue) connections before uvicorn starts serving
     bound_port = sock.getsockname()[1]
 
-    if exit_on_stdin_close:
-        # The desktop shell holds our stdin open. EOF means it is gone, so
-        # don't linger as an orphan; an "exit" line is a deliberate stop
-        # (e.g. before an update replaces this executable).
-        def watch_stdin():
-            for line in sys.stdin:
-                if line.strip() == "exit":
-                    break
-            os._exit(0)
-
-        threading.Thread(target=watch_stdin, daemon=True).start()
+    if exit_with_parent:
+        threading.Thread(target=_watch_parent, daemon=True).start()
 
     token = os.environ.get("SIMCORE_TOKEN") or None
     config = uvicorn.Config(create_app(token=token), log_level="warning")

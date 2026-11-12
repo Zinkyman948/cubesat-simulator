@@ -31,8 +31,8 @@ struct EngineInfo {
 struct EngineState {
     info: Mutex<Option<EngineInfo>>,
     error: Mutex<Option<String>>,
-    /// Held for the app's lifetime: dropping it closes the engine's stdin,
-    /// which the engine treats as a signal to exit.
+    /// The running engine. It also exits by itself when this app's process
+    /// ends (it watches its parent), so it never outlives the app.
     child: Mutex<Option<CommandChild>>,
     terminated: AtomicBool,
 }
@@ -46,21 +46,22 @@ fn engine_info(state: State<EngineState>) -> Result<Option<EngineInfo>, String> 
     Ok(state.info.lock().unwrap().clone())
 }
 
-/// Stop the engine and wait for it to exit, so an update can replace its
-/// files. Asks it to exit via stdin first, so it shuts down cleanly.
+/// Stop the engine and wait (up to 5 s) for it to exit, so an update can
+/// replace its files. The engine is a single process holding no state worth
+/// saving, so terminating it is clean.
 #[tauri::command]
 async fn stop_engine(state: State<'_, EngineState>) -> Result<(), String> {
-    let Some(mut child) = state.child.lock().unwrap().take() else {
+    let Some(child) = state.child.lock().unwrap().take() else {
         return Ok(());
     };
-    let _ = child.write(b"exit\n");
+    child.kill().map_err(|e| e.to_string())?;
     for _ in 0..100 {
         if state.terminated.load(Ordering::SeqCst) {
-            return Ok(());
+            break;
         }
         std::thread::sleep(Duration::from_millis(50));
     }
-    child.kill().map_err(|e| e.to_string())
+    Ok(())
 }
 
 fn start_engine(app: &AppHandle) -> Result<(), String> {
@@ -86,7 +87,7 @@ fn start_engine(app: &AppHandle) -> Result<(), String> {
     let (mut events, child) = app
         .shell()
         .command(exe)
-        .args(["serve", "--port", "0", "--exit-on-stdin-close"])
+        .args(["serve", "--port", "0", "--exit-with-parent"])
         .env("SIMCORE_TOKEN", &token)
         .spawn()
         .map_err(|e| e.to_string())?;

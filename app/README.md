@@ -86,7 +86,7 @@ installer, signs the update with the `TAURI_SIGNING_PRIVATE_KEY` /
 `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` repository secrets, and publishes a GitHub
 Release including `latest.json`. Installed apps read that file at startup and
 offer the update; before installing, the app stops the engine so the installer
-can replace it.
+can replace it (the engine also exits by itself whenever the app does).
 
 The signing key lives outside the repository. **If it is lost, installed copies
 can no longer be updated** (users would have to reinstall manually), so keep a

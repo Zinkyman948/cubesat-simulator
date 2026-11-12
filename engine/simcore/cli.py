@@ -249,7 +249,7 @@ def _cmd_selftest(args) -> int:
 def _cmd_serve(args) -> int:
     from simcore.server import serve
 
-    serve(args.host, args.port, exit_on_stdin_close=args.exit_on_stdin_close)
+    serve(args.host, args.port, exit_with_parent=args.exit_with_parent)
     return 0
 
 
@@ -288,8 +288,8 @@ def main(argv: list[str] | None = None) -> int:
     srv = sub.add_parser("serve", help="run the local HTTP API used by the desktop app")
     srv.add_argument("--host", default="127.0.0.1")
     srv.add_argument("--port", type=int, default=8765, help="0 picks a free port")
-    srv.add_argument("--exit-on-stdin-close", action="store_true",
-                     help="exit when stdin closes (used when launched by the desktop app)")
+    srv.add_argument("--exit-with-parent", action="store_true",
+                     help="exit when the launching process exits (used by the desktop app)")
     srv.set_defaults(func=_cmd_serve)
 
     args = parser.parse_args(argv)

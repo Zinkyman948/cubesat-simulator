@@ -217,8 +217,16 @@ test("tiny values keep meaningful axis labels and readouts", async ({ page }) =>
   await page.getByLabel("Second chart").selectOption("rain");
   const chart = page.locator(".chart").nth(1);
   const ticks = await chart.locator(".u-axis").nth(1).locator(".u-label, div").allTextContents();
-  await chart.locator(".u-over").hover({ position: { x: 40, y: 30 } });
-  await expect(chart.locator(".u-legend")).toContainText(/UHF telemetry\s*[1-9][\d.]*e-\d+ dB|UHF telemetry\s*0\.0+[1-9]\d* dB/);
+  // The chart is rebuilt when the metric changes; retry the hover until the
+  // new chart picks it up.
+  await expect(async () => {
+    await page.mouse.move(0, 0);
+    await chart.locator(".u-over").hover({ position: { x: 40, y: 30 } });
+    await expect(chart.locator(".u-legend")).toContainText(
+      /UHF telemetry\s*[1-9][\d.]*e-\d+ dB|UHF telemetry\s*0\.0+[1-9]\d* dB/,
+      { timeout: 1000 },
+    );
+  }).toPass();
   expect(ticks.join(" ")).not.toMatch(/^(\s*0\s*)+$/);
 });
 

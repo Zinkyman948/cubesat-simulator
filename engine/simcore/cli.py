@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -179,6 +180,14 @@ def _cmd_serve(args) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
+    # Debugging aid: SIMCORE_DEBUG_HANG_S=60 dumps every thread's stack to
+    # stderr each 60 s, to see where a stuck process is waiting.
+    hang_dump = os.environ.get("SIMCORE_DEBUG_HANG_S")
+    if hang_dump:
+        import faulthandler
+
+        faulthandler.dump_traceback_later(float(hang_dump), repeat=True)
+
     parser = argparse.ArgumentParser(prog="simcore", description="CubeSat simulation engine")
     parser.add_argument("--version", action="version", version=f"simcore {__version__}")
     sub = parser.add_subparsers(dest="command", required=True)

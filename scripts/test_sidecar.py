@@ -27,7 +27,8 @@ def launch(exe: str) -> tuple[subprocess.Popen, int]:
     proc = subprocess.Popen(
         [exe, "serve", "--port", "0", "--exit-on-stdin-close"],
         stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True,
-        env={**os.environ, "SIMCORE_TOKEN": TOKEN},
+        # Stack dumps if the engine gets stuck, so CI logs show where.
+        env={**os.environ, "SIMCORE_TOKEN": TOKEN, "SIMCORE_DEBUG_HANG_S": "45"},
     )
     line = proc.stdout.readline().strip()
     assert line.startswith("SIMCORE_READY port="), f"unexpected first line: {line!r}"

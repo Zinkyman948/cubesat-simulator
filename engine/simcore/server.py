@@ -170,6 +170,15 @@ def serve(host: str = "127.0.0.1", port: int = 0, exit_on_stdin_close: bool = Fa
 
     import uvicorn
 
+    # Load every library with native code now, on this thread, before any
+    # other thread exists. On Windows, two threads loading extension DLLs at
+    # once (e.g. pymsis on a request thread and pyproj via ITU-Rpy on the
+    # warm-up thread) can deadlock in the DLL loader.
+    import astropy.units  # noqa: F401
+    import itur  # noqa: F401
+    import pymsis  # noqa: F401
+    import scipy.special  # noqa: F401
+
     # Simulations run on worker threads, whose default stack on Windows is
     # small (1 MB from the executable). Native code (NRLMSIS, ITU-Rpy's maps)
     # can need more; threads created from here on get 32 MB.

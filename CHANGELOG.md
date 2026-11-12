@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.4.0 - 2026-11-12
 
 - Atmospheric drag in the numerical propagator, with density from NRLMSIS 2.1
   and selectable solar activity (low, moderate, high, a solar-cycle model, or
@@ -10,6 +10,10 @@
 - Spacecraft drag area (default: tumbling average of the form factor) and
   drag coefficient in the form.
 - The demo scenario has drag enabled with the solar-cycle model.
+- Robustness on Windows: the engine no longer reads stdin (it watches the
+  app's process to exit with it) and loads its native libraries up front,
+  fixing two hangs that drag would otherwise have triggered.
+- `simcore selftest` checks the bundled models and data.
 
 ## 0.3.0 - 2026-11-12
 

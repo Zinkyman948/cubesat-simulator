@@ -230,11 +230,94 @@ textarea {
 }
 
 .bottom {
-  display: grid;
-  grid-template-columns: minmax(360px, 420px) 1fr;
+  display: flex;
+  flex-direction: column;
   min-height: 0;
   border-top: 1px solid var(--border);
   background: var(--surface);
+}
+
+.bottom-tabs {
+  flex: none;
+}
+
+.passes-view {
+  flex: 1;
+  display: grid;
+  grid-template-columns: minmax(360px, 420px) 1fr;
+  min-height: 0;
+}
+
+/* ---- Orbit lifetime -------------------------------------------------- */
+
+.lifetime {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  padding: 12px 16px;
+  gap: 8px;
+}
+
+.lifetime.empty-state {
+  align-items: flex-start;
+  justify-content: center;
+  max-width: 560px;
+  color: var(--text-secondary);
+}
+
+.lifetime-summary {
+  display: flex;
+  align-items: flex-end;
+  gap: 32px;
+}
+
+.hero {
+  display: flex;
+  flex-direction: column;
+}
+
+.hero-label,
+.stat-tiles dt {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.hero-value {
+  font-size: 28px;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.hero-sub {
+  color: var(--text-secondary);
+}
+
+.stat-tiles {
+  display: flex;
+  gap: 24px;
+  margin: 0;
+}
+
+.stat-tiles dd {
+  margin: 2px 0 0;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.lifetime-actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.lifetime-charts {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 16px;
+  min-height: 0;
 }
 
 /* ---- Sidebar: scenario editor ---------------------------------------- */
@@ -907,4 +990,11 @@ table.data tbody tr.selected {
    so hide the ion logo; data credits remain visible. */
 .cesium-credit-logoContainer {
   display: none !important;
+}
+
+.checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-primary) !important;
 }

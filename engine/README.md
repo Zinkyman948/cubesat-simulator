@@ -30,8 +30,34 @@ simcore budget scenario.yaml                    # classic link budget at mask el
 
 - `two_body`: analytic Kepler motion
 - `j2`: numerical (DOP853) point mass + J2, with the oblateness term aligned
-  to the Earth's true spin axis at epoch
-- `sgp4`: SGP4/SDP4 from a TLE (via skyfield)
+  to the Earth's true spin axis at epoch; optionally atmospheric drag
+- `sgp4`: SGP4/SDP4 from a TLE (via skyfield); drag comes from the TLE's B*
+
+## Drag and orbit lifetime
+
+With `drag.enabled: true`, the numerical propagator adds
+`a = -1/2 rho (Cd A / m) |v_rel| v_rel`, with `v_rel` relative to an
+atmosphere co-rotating with the Earth and density `rho` from NRLMSIS 2.1
+(pymsis). Density is sampled every 30 s along the trajectory and the orbit
+re-integrated until it converges (end position within 1 km), which avoids
+calling NRLMSIS at every integrator step; validated against calling it at
+every step.
+
+`drag.solar_activity` drives the density: `low`/`moderate`/`high`
+(F10.7 = 70/150/250, Ap = 4/15/40), `custom` (`f107`, `ap`), or `cycle`, an
+approximate 11-year solar cycle (F10.7 70-180, minimum 2019.9) for long runs.
+
+The drag area defaults to the tumbling average of the form factor (surface
+area / 4, e.g. 0.039 m^2 for a bare 3U); `drag_coefficient` defaults to 2.2.
+
+`simcore lifetime scenario.yaml` (and `/api/lifetime`) estimates time to
+re-entry (perigee below 120 km) with orbit-averaged decay: Gauss's equations
+for along-track drag averaged over 72 points per orbit with NRLMSIS density
+at each, J2 precession, and adaptive steps (at most 0.5 km of decay or one
+day). It starts from the mean orbital radius over the first orbit, which
+matters: under J2 the satellite flies several km above a circular orbit of
+its averaged semi-major axis. Agrees with full numerical integration within
+5 % over 10 days at 350 km. Solar activity is by far the largest uncertainty.
 
 ## Link budget model
 

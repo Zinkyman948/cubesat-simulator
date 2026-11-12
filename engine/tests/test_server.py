@@ -87,3 +87,11 @@ def test_cors_preflight_from_tauri_origin(scenarios_dir):
     })
     assert r.status_code == 200
     assert r.headers["access-control-allow-origin"] == "http://tauri.localhost"
+
+
+def test_lifetime_endpoint(client):
+    text = _example(client, "sso_3u_demo").replace("altitude_km: 500", "altitude_km: 330")
+    out = client.post("/api/lifetime", json={"yaml": text, "max_years": 2}).json()
+    assert out["reentered"] and 0 < out["lifetime_days"] < 365
+    assert len(out["days"]) == len(out["perigee_km"]) == len(out["f107"])
+    assert out["solar_activity"] == "cycle"

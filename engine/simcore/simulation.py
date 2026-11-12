@@ -9,10 +9,12 @@ from dataclasses import dataclass
 import numpy as np
 
 from simcore.attitude import AttitudeModel, gcrs_axes_to_itrs
+from simcore.environment.density import DensityModel
 from simcore.frames import ecef_to_geodetic, gcrs_to_itrs
 from simcore.link.analysis import LinkPass, analyze_pass, link_atmosphere
 from simcore.link.budget import LinkModel
-from simcore.orbit.elements import KeplerianElements, keplerian_to_cartesian
+from simcore.orbit.elements import KeplerianElements, cartesian_to_keplerian, keplerian_to_cartesian
+from simcore.orbit.lifetime import LifetimeResult, MeanElements, estimate_lifetime
 from simcore.orbit.propagators import J2Propagator, Propagator, SGP4Propagator, TwoBodyPropagator
 from simcore.scenario.models import KeplerianOrbit, Scenario
 from simcore.timeutil import from_datetime, offset, seconds_between
@@ -88,10 +90,13 @@ def build_propagator(scenario: Scenario) -> Propagator:
         return TwoBodyPropagator(elements, epoch)
 
     r0, v0 = keplerian_to_cartesian(elements)
+    drag = scenario.drag
     return J2Propagator(
         r0, v0, epoch,
         t_start=from_datetime(scenario.simulation.start),
         t_end=from_datetime(scenario.simulation.end),
+        density=DensityModel(drag) if drag.enabled else None,
+        ballistic_coefficient=scenario.spacecraft.ballistic_coefficient,
     )
 
 
@@ -104,6 +109,54 @@ def build_attitude(scenario: Scenario, stations: dict[str, GroundStation]) -> At
         scenario.spacecraft.attitude,
         list(stations.values()),
         from_datetime(scenario.simulation.start),
+    )
+
+
+def mean_elements(scenario: Scenario) -> MeanElements:
+    """Orbit elements averaged over one drag-free orbit from the simulation
+    start, for the lifetime model.
+
+    The size comes from the mean orbital radius, not the averaged osculating
+    semi-major axis: under J2 the satellite flies several km above a circular
+    orbit of that mean semi-major axis, and density depends on where it
+    actually flies (density roughly doubles every 40-50 km at 350 km)."""
+    start = from_datetime(scenario.simulation.start)
+    if scenario.propagator == "sgp4":
+        propagator = SGP4Propagator(scenario.orbit.line1, scenario.orbit.line2)
+        r0, v0 = propagator.state(start)
+    else:
+        elements = keplerian_elements(scenario.orbit)
+        epoch = from_datetime(scenario.orbit.epoch or scenario.simulation.start)
+        r0, v0 = TwoBodyPropagator(elements, epoch).state(start)
+    period = KeplerianElements(cartesian_to_keplerian(r0, v0).a, 0, 0, 0, 0, 0).period()
+    one_orbit = J2Propagator(r0, v0, start, start, offset(start, period))
+    seconds = np.linspace(0.0, period, 180, endpoint=False)
+    r, v = one_orbit.state(offset(start, seconds))
+    osc = [cartesian_to_keplerian(r[:, k], v[:, k]) for k in range(seconds.size)]
+
+    def circular_mean(angles):
+        return float(np.arctan2(np.mean(np.sin(angles)), np.mean(np.cos(angles))) % (2 * np.pi))
+
+    e = float(np.mean([o.e for o in osc]))
+    mean_radius = float(np.mean(np.linalg.norm(r, axis=0)))
+    return MeanElements(
+        a=mean_radius / (1.0 + e**2 / 2.0),  # time-averaged r = a (1 + e^2 / 2)
+        e=e,
+        i=float(np.mean([o.i for o in osc])),
+        raan=circular_mean([o.raan for o in osc]),
+        argp=circular_mean([o.argp for o in osc]),
+    )
+
+
+def run_lifetime(scenario: Scenario, max_years: float = 25.0) -> LifetimeResult:
+    """Orbit lifetime from the simulation start, using the scenario's drag
+    settings (solar activity) and spacecraft ballistic coefficient."""
+    return estimate_lifetime(
+        mean_elements(scenario),
+        float(from_datetime(scenario.simulation.start).ut1),
+        scenario.drag,
+        scenario.spacecraft.ballistic_coefficient,
+        max_years=max_years,
     )
 
 

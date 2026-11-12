@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ScenarioError, getExample, listExamples, simulate, validate, waitForEngine } from "./api";
 import Globe from "./components/Globe";
+import LifetimeView from "./components/LifetimeView";
 import PassCharts from "./components/PassCharts";
 import PassTable from "./components/PassTable";
 import ScenarioEditor from "./components/ScenarioEditor";
@@ -37,6 +38,13 @@ export default function App() {
   // The saved draft was edited from an older version of the example.
   const [outdatedDraft, setOutdatedDraft] = useState(false);
   const [version, setVersion] = useState<string | null>(null);
+  const [bottomTab, setBottomTab] = useState<"passes" | "lifetime">(() =>
+    load("bottom-tab") === "lifetime" ? "lifetime" : "passes",
+  );
+  const chooseBottomTab = (tab: "passes" | "lifetime") => {
+    setBottomTab(tab);
+    save("bottom-tab", tab);
+  };
   useEffect(() => {
     appVersion().then(setVersion).catch(() => {});
   }, []);
@@ -186,11 +194,26 @@ export default function App() {
       <main className="main">
         <Globe result={result} selected={selected} />
         <section className="bottom">
-          {result ? (
-            <>
+          <div className="tabs bottom-tabs" role="tablist">
+            {(["passes", "lifetime"] as const).map((tab) => (
+              <button
+                key={tab}
+                role="tab"
+                aria-selected={bottomTab === tab}
+                className={bottomTab === tab ? "on" : undefined}
+                onClick={() => chooseBottomTab(tab)}
+              >
+                {tab === "passes" ? "Passes & links" : "Orbit lifetime"}
+              </button>
+            ))}
+          </div>
+          {bottomTab === "lifetime" ? (
+            <LifetimeView yaml={yaml} disabled={engine.status !== "ok"} />
+          ) : result ? (
+            <div className="passes-view">
               <PassTable result={result} selected={selected} onSelect={setSelected} />
               <PassCharts result={result} selected={selected} />
-            </>
+            </div>
           ) : (
             <p className="empty">{running ? "Running simulation…" : "Run a scenario to see passes."}</p>
           )}

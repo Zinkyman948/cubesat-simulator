@@ -42,6 +42,8 @@ def main() -> None:
             "--collect-data", "itur",
             "--collect-data", "pyproj",
             "--collect-data", "astropy",
+            # NRLMSIS coefficient files; without them its Fortran code stops the process
+            "--collect-data", "pymsis",
             "--add-data", f"{ROOT / 'scenarios'}{data_sep}scenarios",
             str(ROOT / "engine" / "simcore" / "__main__.py"),
         ],

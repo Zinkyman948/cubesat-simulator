@@ -140,6 +140,37 @@ def _cmd_budget(args) -> int:
     return 0
 
 
+def _cmd_lifetime(args) -> int:
+    from datetime import timedelta
+
+    scenario = _load(args.scenario)
+    if scenario is None:
+        return 2
+    sc = scenario.spacecraft
+    print(f"{sc.name}: {sc.form_factor}, {sc.mass_kg:g} kg, drag area {sc.effective_drag_area_m2:.4f} m^2, "
+          f"Cd {sc.drag_coefficient:g} -> ballistic coefficient {sc.ballistic_coefficient:.4f} m^2/kg")
+    print(f"Solar activity: {scenario.drag.solar_activity}")
+    result = simulation.run_lifetime(scenario, max_years=args.max_years)
+    start = scenario.simulation.start
+    print(f"\n  {'Date':<12}{'Perigee':>10}{'Apogee':>10}{'F10.7':>8}")
+    shown = set()
+    for day, peri, apo, f107 in zip(result.days, result.perigee_km, result.apogee_km, result.f107):
+        year = int(day // 365.25)
+        if year in shown and day != result.days[-1]:
+            continue
+        shown.add(year)
+        date = start + timedelta(days=float(day))
+        print(f"  {date:%Y-%m-%d}  {peri:8.1f}km{apo:8.1f}km{f107:8.0f}")
+    years = result.lifetime_days / 365.25
+    if result.reentered:
+        reentry = start + timedelta(days=result.lifetime_days)
+        print(f"\nRe-entry (perigee below {result.reentry_altitude_km:g} km) around {reentry:%Y-%m-%d}: "
+              f"{years:.2f} years ({result.lifetime_days:.0f} days) after {start:%Y-%m-%d}")
+    else:
+        print(f"\nStill in orbit after {years:g} years.")
+    return 0
+
+
 def _cmd_serve(args) -> int:
     from simcore.server import serve
 
@@ -162,6 +193,11 @@ def main(argv: list[str] | None = None) -> int:
     budget = sub.add_parser("budget", help="print link budget tables at the mask elevation and zenith")
     budget.add_argument("scenario", type=Path, help="scenario YAML file")
     budget.set_defaults(func=_cmd_budget)
+
+    life = sub.add_parser("lifetime", help="estimate orbit lifetime under atmospheric drag")
+    life.add_argument("scenario", type=Path, help="scenario YAML file")
+    life.add_argument("--max-years", type=float, default=25.0, help="longest span to simulate")
+    life.set_defaults(func=_cmd_lifetime)
 
     srv = sub.add_parser("serve", help="run the local HTTP API used by the desktop app")
     srv.add_argument("--host", default="127.0.0.1")

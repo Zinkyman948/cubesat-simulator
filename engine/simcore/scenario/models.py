@@ -128,11 +128,42 @@ class Attitude(_Model):
         return self
 
 
+FormFactor = Literal["1U", "1.5U", "2U", "3U", "6U", "12U", "16U"]
+
+# Outer dimensions (m) per the CubeSat Design Specification.
+FORM_FACTOR_DIMENSIONS_M: dict[str, tuple[float, float, float]] = {
+    "1U": (0.100, 0.100, 0.1135),
+    "1.5U": (0.100, 0.100, 0.1702),
+    "2U": (0.100, 0.100, 0.2270),
+    "3U": (0.100, 0.100, 0.3405),
+    "6U": (0.100, 0.2263, 0.3405),
+    "12U": (0.2263, 0.2263, 0.3405),
+    "16U": (0.2263, 0.2263, 0.4540),
+}
+
+
 class Spacecraft(_Model):
     name: str
-    form_factor: Literal["1U", "1.5U", "2U", "3U", "6U", "12U", "16U"] = "3U"
+    form_factor: FormFactor = "3U"
     mass_kg: float = Field(default=4.0, gt=0)
     attitude: Attitude = Attitude()
+    # Drag cross-section; default: the average projected area of the bare
+    # form factor tumbling randomly (surface area / 4). Set it for deployed
+    # solar panels or a fixed flight orientation.
+    drag_area_m2: float | None = Field(default=None, gt=0)
+    drag_coefficient: float = Field(default=2.2, gt=0)
+
+    @property
+    def effective_drag_area_m2(self) -> float:
+        if self.drag_area_m2 is not None:
+            return self.drag_area_m2
+        x, y, z = FORM_FACTOR_DIMENSIONS_M[self.form_factor]
+        return 2.0 * (x * y + y * z + x * z) / 4.0
+
+    @property
+    def ballistic_coefficient(self) -> float:
+        """C_D A / m in m^2/kg (larger decays faster)."""
+        return self.drag_coefficient * self.effective_drag_area_m2 / self.mass_kg
 
 
 class GroundStationConfig(_Model):
@@ -289,6 +320,34 @@ class AtmosphereConfig(_Model):
         return 100.0 - self.availability_percent
 
 
+# Solar flux F10.7 (sfu, also used as its 81-day mean) and geomagnetic Ap.
+SOLAR_ACTIVITY_PRESETS = {"low": (70.0, 4.0), "moderate": (150.0, 15.0), "high": (250.0, 40.0)}
+
+
+class DragConfig(_Model):
+    """Atmospheric drag (NRLMSIS 2.1 density) for the numerical propagator.
+
+    Solar activity: a constant preset, `custom` F10.7/Ap values, or `cycle`,
+    a rough sinusoidal solar cycle (minima 2019.9 and every 11 years) for
+    multi-year lifetime estimates.
+    """
+
+    enabled: bool = False
+    solar_activity: Literal["low", "moderate", "high", "cycle", "custom"] = "moderate"
+    f107: float | None = Field(default=None, gt=0)
+    ap: float | None = Field(default=None, ge=0)
+
+    @model_validator(mode="after")
+    def _check_custom(self):
+        if (self.solar_activity == "custom") != (self.f107 is not None and self.ap is not None):
+            raise ValueError(
+                "custom solar activity needs f107 and ap"
+                if self.solar_activity == "custom"
+                else "f107 and ap are only used with solar_activity: custom"
+            )
+        return self
+
+
 class SimulationConfig(_Model):
     start: datetime
     duration_hours: float = Field(gt=0, le=24 * 30)
@@ -316,12 +375,17 @@ class Scenario(_Model):
     ground_stations: list[GroundStationConfig] = Field(min_length=1)
     links: list[LinkConfig] = []
     atmosphere: AtmosphereConfig = AtmosphereConfig()
+    drag: DragConfig = DragConfig()
 
     @model_validator(mode="after")
     def _check_propagator(self):
         is_tle = self.orbit.type == "tle"
         if is_tle != (self.propagator == "sgp4"):
             raise ValueError("TLE orbits require propagator 'sgp4', and 'sgp4' requires a TLE orbit")
+        if self.drag.enabled and self.propagator != "j2":
+            raise ValueError(
+                "drag needs the numerical propagator ('j2'); SGP4 models drag through the TLE's B*"
+            )
         names = [gs.name for gs in self.ground_stations]
         if len(set(names)) != len(names):
             raise ValueError("ground station names must be unique")

@@ -23,3 +23,22 @@ export function sunSynchronousInclination(a: number, e: number): number | null {
   if (cosI < -1) return null;
   return (Math.acos(cosI) * 180) / Math.PI;
 }
+
+// Outer dimensions (m) per the CubeSat Design Specification (as in the engine).
+const FORM_FACTOR_DIMENSIONS_M: Record<string, [number, number, number]> = {
+  "1U": [0.1, 0.1, 0.1135],
+  "1.5U": [0.1, 0.1, 0.1702],
+  "2U": [0.1, 0.1, 0.227],
+  "3U": [0.1, 0.1, 0.3405],
+  "6U": [0.1, 0.2263, 0.3405],
+  "12U": [0.2263, 0.2263, 0.3405],
+  "16U": [0.2263, 0.2263, 0.454],
+};
+
+/** Average projected area of the bare body tumbling randomly (surface area / 4), m^2. */
+export function tumblingDragArea(formFactor: string): number | null {
+  const dims = FORM_FACTOR_DIMENSIONS_M[formFactor];
+  if (!dims) return null;
+  const [x, y, z] = dims;
+  return (2 * (x * y + y * z + x * z)) / 4;
+}

@@ -64,6 +64,11 @@ def main() -> None:
     assert passes["Svalbard"] > 0, passes
     print(f"simulated in {time.time() - t:.1f} s: {passes}, {len(result['link_passes'])} link passes")
 
+    t = time.time()
+    status, life = call("/api/lifetime", {"yaml": scenario, "max_years": 25})
+    assert status == 200 and life["reentered"], (status, life and life.get("notes"))
+    print(f"lifetime in {time.time() - t:.1f} s: re-entry after {life['lifetime_days'] / 365.25:.2f} years")
+
     proc.stdin.write("exit\n")
     proc.stdin.flush()
     proc.wait(timeout=30)

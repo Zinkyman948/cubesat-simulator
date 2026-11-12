@@ -17,6 +17,7 @@ from skyfield.sgp4lib import EarthSatellite
 from skyfield.timelib import Time
 
 from simcore.constants import J2, MU_EARTH, R_EARTH
+from simcore.environment.density import DensityModel, drag_acceleration, inertial_to_geodetic
 from simcore.orbit.elements import (
     KeplerianElements,
     eccentric_from_mean,
@@ -25,7 +26,13 @@ from simcore.orbit.elements import (
     mean_from_eccentric,
     true_from_eccentric,
 )
-from simcore.timeutil import seconds_between, timescale
+from simcore.timeutil import offset, seconds_between, timescale
+
+# Spacing of density samples along the trajectory when drag is on.
+DENSITY_SAMPLE_STEP_S = 30.0
+# Drag iterations stop once the end position moves less than this (km).
+DENSITY_CONVERGENCE_KM = 1.0
+MAX_DENSITY_ITERATIONS = 6
 
 
 class Propagator(Protocol):
@@ -64,11 +71,19 @@ def j2_acceleration(r: np.ndarray, pole: np.ndarray, mu: float = MU_EARTH) -> np
 
 
 class J2Propagator:
-    """Numerical propagation with point-mass gravity plus J2.
+    """Numerical propagation with point-mass gravity plus J2, and optionally
+    atmospheric drag.
 
     Integrates with DOP853 and keeps a dense-output interpolant covering
     [t_start, t_end] (extended to include the epoch), so `state` can be
     queried at any time in that span without re-integrating.
+
+    With drag, density is sampled every 30 s along the current trajectory
+    (one vectorized NRLMSIS call) and interpolated in time during the next
+    integration, starting from the drag-free trajectory and repeating until
+    the end position changes by less than 1 km. This avoids calling NRLMSIS
+    at every integrator step; it usually converges in two or three rounds,
+    more for long, low orbits where drag moves the satellite far along track.
     """
 
     def __init__(
@@ -82,6 +97,8 @@ class J2Propagator:
         pole: np.ndarray | None = None,
         rtol: float = 1e-11,
         atol: float = 1e-9,
+        density: DensityModel | None = None,
+        ballistic_coefficient: float = 0.0,
     ):
         self.epoch = epoch
         self.mu = mu
@@ -92,12 +109,42 @@ class J2Propagator:
         y0 = np.concatenate([r0, v0])
         self._lo = min(0.0, float(seconds_between(epoch, t_start)))
         self._hi = max(0.0, float(seconds_between(epoch, t_end)))
+        self._ballistic = ballistic_coefficient
+        self._rho_s: np.ndarray | None = None
+        self._rho: np.ndarray | None = None
+        self._solve(y0, rtol, atol)
+        self.density_iterations = 0
+        if density is not None and ballistic_coefficient > 0:
+            end = offset(epoch, max(self._hi, 1.0))
+            for _ in range(MAX_DENSITY_ITERATIONS):
+                previous = self.state(end)[0]
+                self._sample_density(density)
+                self._solve(y0, rtol, atol)
+                self.density_iterations += 1
+                if np.linalg.norm(self.state(end)[0] - previous) < DENSITY_CONVERGENCE_KM:
+                    break
+
+    def _solve(self, y0, rtol, atol):
         # Always integrate a short forward arc so a forward solution exists.
         self._forward = self._integrate(y0, max(self._hi, 1.0), rtol, atol)
         self._backward = self._integrate(y0, self._lo, rtol, atol) if self._lo < 0 else None
 
-    def _derivatives(self, _s: float, y: np.ndarray) -> np.ndarray:
-        return np.concatenate([y[3:], j2_acceleration(y[:3], self.pole, self.mu)])
+    def _sample_density(self, density: DensityModel) -> None:
+        span_lo, span_hi = self._lo, max(self._hi, 1.0)
+        n = int(np.ceil((span_hi - span_lo) / DENSITY_SAMPLE_STEP_S)) + 1
+        s = np.linspace(span_lo, span_hi, n)
+        times = offset(self.epoch, s)
+        r, _ = self.state(times)
+        lat, lon, alt = inertial_to_geodetic(r, times.ut1)
+        self._rho_s = s
+        self._rho = density.density(times.ut1, lat, lon, alt)
+
+    def _derivatives(self, s: float, y: np.ndarray) -> np.ndarray:
+        acc = j2_acceleration(y[:3], self.pole, self.mu)
+        if self._rho is not None:
+            rho = float(np.interp(s, self._rho_s, self._rho))
+            acc = acc + drag_acceleration(y[:3], y[3:], rho, self._ballistic, self.pole)
+        return np.concatenate([y[3:], acc])
 
     def _integrate(self, y0, s_end, rtol, atol):
         sol = solve_ivp(

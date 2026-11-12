@@ -17,7 +17,7 @@ import yaml
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel, Field, ValidationError
 
 from simcore import __version__, simulation
 from simcore.scenario import Scenario
@@ -45,6 +45,11 @@ def default_examples_dir() -> Path:
 
 class SimulateRequest(BaseModel):
     yaml: str
+
+
+class LifetimeRequest(BaseModel):
+    yaml: str
+    max_years: float = Field(default=25.0, gt=0, le=100)
 
 
 # Tags pydantic inserts into error locations for discriminated unions
@@ -141,6 +146,19 @@ def create_app(token: str | None = None, examples_dir: Path | None = None) -> Fa
         for key in ("r_gcrs_km", "v_gcrs_km_s"):
             out["ephemeris"].pop(key)
         return out
+
+    @app.post("/api/lifetime")
+    def lifetime(req: LifetimeRequest):
+        """Orbit lifetime under drag, from the scenario's start."""
+        parsed = parse_scenario(req.yaml)
+        if isinstance(parsed, JSONResponse):
+            return parsed
+        result = simulation.run_lifetime(parsed, max_years=req.max_years)
+        return {
+            **result.to_dict(),
+            "start": parsed.simulation.start.isoformat(),
+            "solar_activity": parsed.drag.solar_activity,
+        }
 
     return app
 

@@ -5,7 +5,7 @@
 // (development, or a hosted demo) we talk to a separately started
 // `simcore serve` at VITE_ENGINE_URL.
 
-import type { ExampleSummary, SimulationResult, ValidationIssue } from "./types";
+import type { ExampleSummary, LifetimeResult, SimulationResult, ValidationIssue } from "./types";
 
 interface Engine {
   url: string;
@@ -97,3 +97,9 @@ export async function validate(yaml: string): Promise<ValidationIssue[]> {
 
 export const simulate = (yaml: string) =>
   request<SimulationResult>("/api/simulate", { method: "POST", body: JSON.stringify({ yaml }) });
+
+export const estimateLifetime = (yaml: string, maxYears = 25) =>
+  request<LifetimeResult>("/api/lifetime", {
+    method: "POST",
+    body: JSON.stringify({ yaml, max_years: maxYears }),
+  });

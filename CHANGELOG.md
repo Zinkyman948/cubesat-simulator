@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+- Atmospheric drag in the numerical propagator, with density from NRLMSIS 2.1
+  and selectable solar activity (low, moderate, high, a solar-cycle model, or
+  custom F10.7/Ap).
+- Orbit lifetime: a new "Orbit lifetime" view (and `simcore lifetime`)
+  estimates the re-entry date and charts the altitude decay and solar flux.
+- Spacecraft drag area (default: tumbling average of the form factor) and
+  drag coefficient in the form.
+- The demo scenario has drag enabled with the solar-cycle model.
+
 ## 0.3.0 - 2026-11-12
 
 - Spacecraft attitude: nadir, ground-station tracking, Sun-pointing,

@@ -18,10 +18,16 @@ interface Props {
   /** Horizontal reference line, e.g. 0 dB margin. */
   threshold?: number;
   syncKey: string;
+  /** "time": a pass (HH:MM); "date": months to years (YYYY-MM). */
+  timeScale?: "time" | "date";
 }
 
 function fmtUtc(ts: number, withSeconds = true) {
   return new Date(ts * 1000).toISOString().slice(11, withSeconds ? 19 : 16);
+}
+
+function fmtDate(ts: number, withDay = true) {
+  return new Date(ts * 1000).toISOString().slice(0, withDay ? 10 : 7);
 }
 
 /** Axis tick labels with just enough decimals for the tick spacing. */
@@ -38,7 +44,16 @@ function fmtValue(v: number, decimals: number): string {
   return v.toFixed(decimals);
 }
 
-export default function LineChart({ title, unit, decimals, x, series, threshold, syncKey }: Props) {
+export default function LineChart({
+  title,
+  unit,
+  decimals,
+  x,
+  series,
+  threshold,
+  syncKey,
+  timeScale = "time",
+}: Props) {
   const host = useRef<HTMLDivElement>(null);
   const themeVersion = useThemeVersion();
 
@@ -105,11 +120,18 @@ export default function LineChart({ title, unit, decimals, x, series, threshold,
       },
       legend: { live: true },
       axes: [
-        { ...axis, values: (_u, splits) => splits.map((ts) => fmtUtc(ts, false)) },
+        {
+          ...axis,
+          values: (_u, splits) =>
+            splits.map((ts) => (timeScale === "date" ? fmtDate(ts, false) : fmtUtc(ts, false))),
+        },
         { ...axis, size: 52, space: 22, values: (_u, splits, _axis, _space, incr) => fmtTicks(splits, incr) },
       ],
       series: [
-        { label: "UTC", value: (_u, v) => (v == null ? "--" : fmtUtc(v)) },
+        {
+          label: timeScale === "date" ? "Date" : "UTC",
+          value: (_u, v) => (v == null ? "--" : timeScale === "date" ? fmtDate(v) : fmtUtc(v)),
+        },
         ...series.map<uPlot.Series>((s) => ({
           label: s.label,
           stroke: s.color,
@@ -139,7 +161,7 @@ export default function LineChart({ title, unit, decimals, x, series, threshold,
       resize.disconnect();
       plot.destroy();
     };
-  }, [x, series, unit, decimals, threshold, syncKey, themeVersion]);
+  }, [x, series, unit, decimals, threshold, syncKey, timeScale, themeVersion]);
 
   return (
     <div className={series.length > 1 ? "chart multi" : "chart"}>

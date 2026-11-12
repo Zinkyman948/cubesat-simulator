@@ -116,3 +116,19 @@ export interface PassRef {
   index: number;
   pass: Pass;
 }
+
+export interface LifetimeResult {
+  start: string;
+  start_jd: number;
+  days: number[];
+  perigee_km: number[];
+  apogee_km: number[];
+  f107: number[];
+  reentered: boolean;
+  lifetime_days: number;
+  max_years: number;
+  reentry_altitude_km: number;
+  ballistic_coefficient: number;
+  solar_activity: string;
+  notes: string[];
+}

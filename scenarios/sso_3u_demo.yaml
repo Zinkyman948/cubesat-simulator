@@ -15,8 +15,16 @@ spacecraft:
   mass_kg: 4.0
   attitude:
     mode: nadir             # +Z toward Earth, +X along the velocity
+  # Drag area defaults to the tumbling average of the 3U body (0.039 m^2);
+  # set drag_area_m2 for deployed panels. Cd defaults to 2.2.
 
 propagator: j2
+
+# Atmospheric drag (NRLMSIS 2.1). "cycle" follows an approximate 11-year
+# solar cycle, which matters for multi-year lifetime estimates.
+drag:
+  enabled: true
+  solar_activity: cycle
 
 orbit:
   type: keplerian

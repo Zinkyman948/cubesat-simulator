@@ -165,6 +165,42 @@ export function SelectField({ path, label, options, hint }: SelectFieldProps) {
   );
 }
 
+export function CheckboxField({
+  path,
+  label,
+  hint,
+  disabled,
+}: {
+  path: Path;
+  label: string;
+  hint?: string;
+  disabled?: boolean;
+}) {
+  const { data, set } = useForm();
+  const errors = useIssues(path);
+  const id = useId();
+  return (
+    <div className={`field wide${errors.length ? " invalid" : ""}`}>
+      <label htmlFor={id} className="checkbox-label">
+        <input
+          id={id}
+          type="checkbox"
+          checked={getIn(data, path) === true}
+          disabled={disabled}
+          onChange={(e) => set(path, e.target.checked)}
+        />
+        {label}
+      </label>
+      {errors.map((e, i) => (
+        <span key={i} className="field-error" role="alert">
+          {e}
+        </span>
+      ))}
+      {hint && !errors.length && <span className="field-hint">{hint}</span>}
+    </div>
+  );
+}
+
 /** ISO-8601 UTC timestamp edited as date + time in UTC. */
 export function DateTimeField({
   path,

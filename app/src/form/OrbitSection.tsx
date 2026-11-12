@@ -71,7 +71,11 @@ export default function OrbitSection() {
     edit((doc) => {
       doc.setIn(["orbit"], doc.createNode(stash.current[next]));
       const propagator = getIn(data, ["propagator"]);
-      if (next === "tle") doc.setIn(["propagator"], "sgp4");
+      if (next === "tle") {
+        doc.setIn(["propagator"], "sgp4");
+        // SGP4 models drag through the TLE's B* term.
+        if (doc.getIn(["drag", "enabled"]) === true) doc.setIn(["drag", "enabled"], false);
+      }
       else if (propagator === "sgp4") doc.setIn(["propagator"], "j2");
     });
   };

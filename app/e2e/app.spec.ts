@@ -148,6 +148,27 @@ test("ITU-R atmosphere: X-band loses more than S-band, and can be switched off",
   expect(without).toEqual({ s: 0, x: 0 });
 });
 
+test("orbit lifetime: estimate, headline, charts, and staleness", async ({ page }) => {
+  const errors = trackErrors(page);
+  await openApp(page);
+  await page.getByRole("tab", { name: "Orbit lifetime" }).click();
+  await page.getByRole("button", { name: "Estimate lifetime" }).click();
+  // The demo 3U at 500 km with the solar-cycle model re-enters around 2031.
+  await expect(page.locator(".hero-label")).toHaveText("Estimated re-entry", { timeout: 60_000 });
+  await expect(page.locator(".hero-value")).toContainText("2031");
+  await expect(page.locator(".lifetime .chart .uplot")).toHaveCount(2);
+  await expect(page.locator(".stat-tiles")).toContainText("0.0215 m²/kg");
+
+  // A heavier spacecraft decays more slowly; the old estimate is flagged as stale.
+  await field(page, "Mass").locator("input").fill("8");
+  await expect(page.getByText("Scenario changed since this estimate.")).toBeVisible();
+  await page.getByRole("button", { name: "Re-estimate" }).click();
+  await expect(page.getByText("Scenario changed since this estimate.")).toBeHidden({ timeout: 60_000 });
+  const heavier = await page.locator(".hero-value").textContent();
+  expect(Number(/(\d{4})/.exec(heavier ?? "")?.[1])).toBeGreaterThan(2031);
+  expect(errors).toEqual([]);
+});
+
 test("drafts survive a reload and can be reverted", async ({ page }) => {
   await openApp(page);
   await field(page, "Inclination").locator("input").fill("98.1");

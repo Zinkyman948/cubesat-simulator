@@ -212,8 +212,36 @@ def _cmd_selftest(args) -> int:
         loss = SlantPathAtmosphere(1.35, 103.82, 0.0, 8.2e9, 1.0, 5.4, 0.6, 10.0).at(30.0)
         return f"{float(loss.total_db):.2f} dB at X-band, 30 deg, Singapore"
 
+    def msis_worker_thread():
+        # The server calls NRLMSIS from worker threads with many points; check
+        # that under a small (1 MB) thread stack.
+        import threading
+
+        import numpy as np
+
+        from simcore.environment.density import DensityModel
+        from simcore.scenario.models import DragConfig
+
+        result = {}
+
+        def work():
+            n = 3000
+            rho = DensityModel(DragConfig()).density(np.full(n, 2461355.5), np.zeros(n), np.zeros(n), np.full(n, 500.0))
+            result["rho"] = float(rho.mean())
+
+        old = threading.stack_size(1024 * 1024)
+        try:
+            t = threading.Thread(target=work, daemon=True)
+            t.start()
+            t.join(timeout=60)
+        finally:
+            threading.stack_size(old)
+        if "rho" not in result:
+            raise RuntimeError("worker thread did not finish")
+        return f"3000 points on a 1 MB-stack thread: mean {result['rho']:.3e} kg/m^3"
+
     ok = all([step("NRLMSIS coefficient file", msis_file), step("NRLMSIS density", msis_density),
-              step("ITU-R attenuation", itu_r)])
+              step("NRLMSIS in a worker thread", msis_worker_thread), step("ITU-R attenuation", itu_r)])
     print("selftest passed" if ok else "selftest FAILED", flush=True)
     return 0 if ok else 1
 

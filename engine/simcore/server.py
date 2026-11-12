@@ -170,6 +170,11 @@ def serve(host: str = "127.0.0.1", port: int = 0, exit_on_stdin_close: bool = Fa
 
     import uvicorn
 
+    # Simulations run on worker threads, whose default stack on Windows is
+    # small (1 MB from the executable). Native code (NRLMSIS, ITU-Rpy's maps)
+    # can need more; threads created from here on get 32 MB.
+    threading.stack_size(32 * 1024 * 1024)
+
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     if sys.platform != "win32":
         # Allow an immediate restart on the same port while old connections

@@ -9,6 +9,10 @@ from simcore.constants import OMEGA_EARTH
 from simcore.frames import ecef_to_geodetic
 from simcore.scenario.models import SOLAR_ACTIVITY_PRESETS, DragConfig
 
+# Points per NRLMSIS call. Large calls need large native temporaries; keep
+# them small enough for worker-thread stacks on every platform.
+MSIS_CHUNK = 256
+
 # Rough solar cycle for multi-year runs: F10.7 swings between these values
 # with an 11-year period, minimum at 2019.9 (the start of cycle 25).
 CYCLE_MIN_F107, CYCLE_MAX_F107 = 70.0, 180.0
@@ -79,13 +83,18 @@ class DensityModel:
         jd = np.atleast_1d(np.asarray(jd_utc, dtype=float))
         lat, lon, alt = (np.broadcast_to(np.asarray(v, dtype=float), jd.shape) for v in (lat_deg, lon_deg, alt_km))
         f107, ap = solar_indices(self.config, jd)
-        dates = ((jd - UNIX_EPOCH_JD) * 86400e3).astype("int64").astype("datetime64[ms]")
-        out = pymsis.calculate(
-            dates, lon.ravel(), lat.ravel(), alt.ravel(),
-            f107s=f107.ravel(), f107as=f107.ravel(), aps=np.repeat(ap.ravel()[:, None], 7, axis=1),
-            version=2.1,
-        )
-        rho = np.asarray(out)[..., 0].reshape(jd.shape)
+        dates = ((jd.ravel() - UNIX_EPOCH_JD) * 86400e3).astype("int64").astype("datetime64[ms]")
+        lat, lon, alt, f107, ap = (v.ravel() for v in (lat, lon, alt, f107, ap))
+        rho = np.empty(dates.size)
+        for i in range(0, dates.size, MSIS_CHUNK):
+            part = slice(i, i + MSIS_CHUNK)
+            out = pymsis.calculate(
+                dates[part], lon[part], lat[part], alt[part],
+                f107s=f107[part], f107as=f107[part], aps=np.repeat(ap[part, None], 7, axis=1),
+                version=2.1,
+            )
+            rho[part] = np.asarray(out)[..., 0].ravel()
+        rho = rho.reshape(jd.shape)
         # MSIS returns NaN far above its range; there is effectively no drag there.
         return np.nan_to_num(rho, nan=0.0)
 

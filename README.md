@@ -61,3 +61,7 @@ app/         Desktop app: Tauri shell (src-tauri/) and React frontend (src/)
 scenarios/   Example scenario files (YAML)
 scripts/     Engine sidecar build and smoke test
 ```
+
+## License
+
+[MIT](LICENSE)

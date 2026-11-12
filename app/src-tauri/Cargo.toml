@@ -3,6 +3,7 @@ name = "cubesat-simulator"
 version = "0.1.0"
 description = "High-fidelity CubeSat orbit and communications simulator"
 edition = "2021"
+license = "MIT"
 
 [lib]
 # The _lib suffix avoids a name clash with the binary on Windows.

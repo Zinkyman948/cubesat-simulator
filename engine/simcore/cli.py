@@ -172,6 +172,52 @@ def _cmd_lifetime(args) -> int:
     return 0
 
 
+def _cmd_selftest(args) -> int:
+    """Check bundled data and the native models, step by step (for packaged builds)."""
+    import platform
+    import time
+
+    def step(name, fn):
+        print(f"{name} ...", flush=True)
+        t = time.time()
+        try:
+            detail = fn()
+        except Exception as e:  # report and carry on to the next check
+            print(f"  FAILED: {type(e).__name__}: {e}", flush=True)
+            return False
+        print(f"  ok ({time.time() - t:.1f} s){': ' + detail if detail else ''}", flush=True)
+        return True
+
+    print(f"simcore {__version__}, Python {platform.python_version()}, {platform.platform()}, "
+          f"frozen={getattr(sys, 'frozen', False)}", flush=True)
+
+    def msis_file():
+        from simcore.environment.density import msis_parameter_file
+
+        parm = msis_parameter_file()
+        if not parm.is_file():
+            raise FileNotFoundError(parm)
+        return str(parm)
+
+    def msis_density():
+        from simcore.environment.density import DensityModel
+        from simcore.scenario.models import DragConfig
+
+        rho = DensityModel(DragConfig()).density(2461355.5, 0.0, 0.0, 500.0)[0]
+        return f"{rho:.3e} kg/m^3 at 500 km"
+
+    def itu_r():
+        from simcore.environment.atmosphere import SlantPathAtmosphere
+
+        loss = SlantPathAtmosphere(1.35, 103.82, 0.0, 8.2e9, 1.0, 5.4, 0.6, 10.0).at(30.0)
+        return f"{float(loss.total_db):.2f} dB at X-band, 30 deg, Singapore"
+
+    ok = all([step("NRLMSIS coefficient file", msis_file), step("NRLMSIS density", msis_density),
+              step("ITU-R attenuation", itu_r)])
+    print("selftest passed" if ok else "selftest FAILED", flush=True)
+    return 0 if ok else 1
+
+
 def _cmd_serve(args) -> int:
     from simcore.server import serve
 
@@ -207,6 +253,9 @@ def main(argv: list[str] | None = None) -> int:
     life.add_argument("scenario", type=Path, help="scenario YAML file")
     life.add_argument("--max-years", type=float, default=25.0, help="longest span to simulate")
     life.set_defaults(func=_cmd_lifetime)
+
+    selftest = sub.add_parser("selftest", help="check bundled data and native models")
+    selftest.set_defaults(func=_cmd_selftest)
 
     srv = sub.add_parser("serve", help="run the local HTTP API used by the desktop app")
     srv.add_argument("--host", default="127.0.0.1")

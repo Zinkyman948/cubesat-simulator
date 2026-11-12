@@ -47,6 +47,11 @@ def launch(exe: str) -> tuple[subprocess.Popen, int]:
 
 def main() -> None:
     exe = sys.argv[1]
+    # Native-model checks first, on the main thread, with their output visible.
+    check = subprocess.run([exe, "selftest"], capture_output=True, text=True, timeout=180)
+    print(check.stdout + check.stderr)
+    assert check.returncode == 0, "selftest failed"
+
     proc, port = launch(exe)
 
     def call(path: str, body: dict | None = None, token: str = TOKEN):

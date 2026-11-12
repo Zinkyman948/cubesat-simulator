@@ -53,9 +53,24 @@ def inertial_to_geodetic(r_km: np.ndarray, jd_utc: np.ndarray):
     return np.degrees(lat), np.degrees(lon), alt
 
 
+def msis_parameter_file():
+    """NRLMSIS 2.1 coefficient file shipped with pymsis."""
+    from pathlib import Path
+
+    import pymsis.msis
+
+    return Path(pymsis.msis._MSIS_PARAMETER_PATH) / "msis21.parm"
+
+
 class DensityModel:
     def __init__(self, config: DragConfig):
         self.config = config
+        # Without its coefficient file NRLMSIS's Fortran code calls STOP,
+        # ending (or, from a worker thread on Windows, hanging) the whole
+        # process. Fail with a Python error instead.
+        parm = msis_parameter_file()
+        if not parm.is_file():
+            raise RuntimeError(f"NRLMSIS coefficient file missing: {parm}")
 
     def density(self, jd_utc, lat_deg, lon_deg, alt_km) -> np.ndarray:
         """Total mass density (kg/m^3)."""
